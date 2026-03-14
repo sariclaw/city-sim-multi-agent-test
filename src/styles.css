@@ -132,6 +132,38 @@ select {
   margin-top: 28px;
 }
 
+.sim-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.sim-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 42px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sim-pill.is-live {
+  color: #032132;
+  background: linear-gradient(135deg, #9be8ff, #59d0ff);
+}
+
+.sim-pill.is-paused {
+  color: var(--amber);
+  background: rgba(255, 211, 110, 0.12);
+  border-color: rgba(255, 211, 110, 0.3);
+}
+
 .button {
   border: 0;
   border-radius: 999px;
@@ -166,6 +198,19 @@ select {
   color: var(--text);
   background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.speed-button {
+  min-width: 62px;
+  padding-inline: 16px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.speed-button.is-active {
+  color: #032132;
+  background: linear-gradient(135deg, rgba(255, 211, 110, 0.98), rgba(255, 167, 77, 0.94));
 }
 
 .hero-signal {
@@ -537,6 +582,10 @@ select {
   .district-board {
     min-height: 460px;
   }
+
+  .sim-controls {
+    align-items: flex-start;
+  }
 }
 
 @media (max-width: 720px) {
@@ -579,6 +628,15 @@ select {
 
   .button {
     width: 100%;
+  }
+
+  .sim-controls {
+    flex-direction: column;
+  }
+
+  .sim-pill,
+  .speed-button {
+    justify-content: center;
   }
 
   .section-heading {
