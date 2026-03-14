@@ -1,16 +1,208 @@
 :root {
   color-scheme: dark;
-  font-family: Inter, system-ui, sans-serif;
-  background: #0f1720;
-  color: #e7edf5;
+  font-family: "Segoe UI", sans-serif;
+  background: #101722;
+  color: #edf3fb;
+  --bg: #101722;
+  --panel: rgba(13, 22, 33, 0.8);
+  --panel-border: rgba(164, 184, 204, 0.15);
+  --accent: #8ac27a;
+  --accent-2: #f0c36a;
+  --text-dim: #aebccd;
+  --danger: #de7d74;
+  --warn: #f0c36a;
+  --good: #8ac27a;
 }
+
+* {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
-  background: radial-gradient(circle at top, #1b2b3a, #0b1016 60%);
+  background:
+    radial-gradient(circle at top, rgba(110, 150, 108, 0.22), transparent 30%),
+    linear-gradient(180deg, #172332 0%, #101722 58%, #0b1018 100%);
 }
+
+button {
+  font: inherit;
+}
+
 .shell {
-  max-width: 900px;
+  max-width: 980px;
   margin: 0 auto;
-  padding: 48px 24px;
+  padding: 40px 20px 56px;
+}
+
+.hero,
+.stats,
+.panel,
+.actions {
+  display: grid;
+  gap: 16px;
+}
+
+.hero {
+  grid-template-columns: minmax(0, 1fr) 180px;
+  align-items: end;
+  margin-bottom: 24px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--accent-2);
+  font-size: 0.78rem;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: clamp(2.4rem, 6vw, 4.4rem);
+  line-height: 0.95;
+  margin-bottom: 12px;
+}
+
+.summary,
+.panel-header p,
+.action-card span,
+.stat span {
+  color: var(--text-dim);
+}
+
+.season-card,
+.panel,
+.stat,
+.action-card {
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  backdrop-filter: blur(8px);
+  border-radius: 18px;
+}
+
+.season-card {
+  padding: 18px;
+  display: grid;
+  gap: 6px;
+  text-align: center;
+}
+
+.season-card strong {
+  font-size: 1.8rem;
+  color: var(--accent);
+}
+
+.stats {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 24px;
+}
+
+.stat {
+  padding: 18px;
+}
+
+.stat strong {
+  display: block;
+  margin-top: 12px;
+  font-size: 2rem;
+}
+
+.stat.good strong {
+  color: var(--good);
+}
+
+.stat.warn strong {
+  color: var(--warn);
+}
+
+.stat.danger strong {
+  color: var(--danger);
+}
+
+.panel {
+  padding: 20px;
+  margin-bottom: 18px;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+  margin-bottom: 16px;
+}
+
+.actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 16px;
+}
+
+.action-card,
+.advance-button {
+  border: 1px solid var(--panel-border);
+  color: inherit;
+  cursor: pointer;
+  transition: transform 140ms ease, border-color 140ms ease, background 140ms ease;
+}
+
+.action-card {
+  padding: 18px;
+  text-align: left;
+  display: grid;
+  gap: 10px;
+}
+
+.action-card:hover,
+.advance-button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(240, 195, 106, 0.45);
+}
+
+.action-card:disabled,
+.advance-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  transform: none;
+}
+
+.advance-button {
+  width: 100%;
+  border-radius: 14px;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, rgba(138, 194, 122, 0.22), rgba(240, 195, 106, 0.18));
+}
+
+.log {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.log li {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #dbe6f3;
+}
+
+@media (max-width: 760px) {
+  .hero,
+  .stats,
+  .actions {
+    grid-template-columns: 1fr;
+  }
+
+  .panel-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
