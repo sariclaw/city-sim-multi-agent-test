@@ -20,6 +20,16 @@ const DISTRICT_LAYOUT = [
   { key: 'south', label: 'South Reach', type: 'mixed', x: 0.355, y: 0.66, w: 0.295, h: 0.19 },
 ];
 
+const ISO_DISTRICT_LAYOUT = {
+  civic: { x: 4.3, y: 2.2, w: 1.7, h: 1.5 },
+  north: { x: 5.9, y: 1.2, w: 1.8, h: 1.6 },
+  harbor: { x: 1.2, y: 2.4, w: 1.9, h: 1.7 },
+  market: { x: 4.4, y: 3.8, w: 2.0, h: 1.5 },
+  park: { x: 2.2, y: 5.2, w: 2.0, h: 1.6 },
+  industry: { x: 7.0, y: 4.2, w: 1.8, h: 1.6 },
+  south: { x: 5.0, y: 5.8, w: 2.0, h: 1.5 },
+};
+
 const DISTRICT_MODELS = {
   civic: {
     housing: 8,
@@ -1204,12 +1214,16 @@ function seasonPalette(season) {
 
 function createCityViewModel() {
   const systems = state.city.systems;
-  const districts = state.city.districts.map((district) => ({
-    ...district,
-    intensity: clamp(Math.round(2 + district.development * 5 + district.condition * 2), 2, 9),
-    utilityTone: toneFromRatio(1 / Math.max(district.metrics.utilityLoad, 0.6)),
-    growthTone: district.growthTrend > 1 ? 'good' : district.growthTrend > -0.4 ? 'warn' : 'danger',
-  })).sort((left, right) => (left.y + left.h) - (right.y + right.h));
+  const districts = state.city.districts.map((district) => {
+    const isoLayout = ISO_DISTRICT_LAYOUT[district.key] ?? { x: 4, y: 4, w: 1.8, h: 1.5 };
+    return {
+      ...district,
+      ...isoLayout,
+      intensity: clamp(Math.round(2 + district.development * 5 + district.condition * 2), 2, 9),
+      utilityTone: toneFromRatio(1 / Math.max(district.metrics.utilityLoad, 0.6)),
+      growthTone: district.growthTrend > 1 ? 'good' : district.growthTrend > -0.4 ? 'warn' : 'danger',
+    };
+  }).sort((left, right) => (left.y + left.h) - (right.y + right.h));
 
   return {
     palette: seasonPalette(currentSeason()),
