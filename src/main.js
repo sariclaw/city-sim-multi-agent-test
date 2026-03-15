@@ -1408,6 +1408,44 @@ function districtAccent(type) {
   return accents[type] ?? '#dbeeff';
 }
 
+function terrainMetrics(width, height) {
+  const cols = 10;
+  const rows = 8;
+  const tileWidth = Math.max(56, Math.min(96, width / 10.5));
+  const tileHeight = Math.max(28, Math.min(48, tileWidth * 0.5));
+  return {
+    cols,
+    rows,
+    tileWidth,
+    tileHeight,
+    originX: width * 0.5,
+    originY: height * 0.27,
+  };
+}
+
+function isoProject(gridX, gridY, originX, originY, tileWidth, tileHeight) {
+  return {
+    x: originX + (gridX - gridY) * (tileWidth * 0.5),
+    y: originY + (gridX + gridY) * (tileHeight * 0.5),
+  };
+}
+
+function drawIsoDiamond(context, centerX, centerY, width, height, fillStyle, strokeStyle = 'transparent', lineWidth = 1) {
+  context.beginPath();
+  context.moveTo(centerX, centerY - height * 0.5);
+  context.lineTo(centerX + width * 0.5, centerY);
+  context.lineTo(centerX, centerY + height * 0.5);
+  context.lineTo(centerX - width * 0.5, centerY);
+  context.closePath();
+  context.fillStyle = fillStyle;
+  context.fill();
+  if (strokeStyle && strokeStyle !== 'transparent') {
+    context.strokeStyle = strokeStyle;
+    context.lineWidth = lineWidth;
+    context.stroke();
+  }
+}
+
 function districtIsoFootprint(district, metrics) {
   const center = isoProject(district.x + district.w * 0.5, district.y + district.h * 0.5, metrics.originX, metrics.originY, metrics.tileWidth, metrics.tileHeight);
   return {
