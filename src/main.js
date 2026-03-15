@@ -21,13 +21,13 @@ const DISTRICT_LAYOUT = [
 ];
 
 const ISO_DISTRICT_LAYOUT = {
-  civic: { x: 4.3, y: 2.2, w: 1.7, h: 1.5 },
-  north: { x: 5.9, y: 1.2, w: 1.8, h: 1.6 },
-  harbor: { x: 1.2, y: 2.4, w: 1.9, h: 1.7 },
-  market: { x: 4.4, y: 3.8, w: 2.0, h: 1.5 },
-  park: { x: 2.2, y: 5.2, w: 2.0, h: 1.6 },
-  industry: { x: 7.0, y: 4.2, w: 1.8, h: 1.6 },
-  south: { x: 5.0, y: 5.8, w: 2.0, h: 1.5 },
+  civic: { x: 6.8, y: 3.2, w: 2.4, h: 2.1 },
+  north: { x: 9.6, y: 1.8, w: 2.8, h: 2.4 },
+  harbor: { x: 2.0, y: 4.1, w: 2.6, h: 2.3 },
+  market: { x: 7.1, y: 5.5, w: 3.0, h: 2.2 },
+  park: { x: 3.4, y: 7.7, w: 3.0, h: 2.4 },
+  industry: { x: 11.0, y: 6.0, w: 2.7, h: 2.4 },
+  south: { x: 8.1, y: 9.0, w: 3.1, h: 2.3 },
 };
 
 const DISTRICT_MODELS = {
@@ -1423,17 +1423,17 @@ function districtAccent(type) {
 }
 
 function terrainMetrics(width, height) {
-  const cols = 10;
-  const rows = 8;
-  const tileWidth = Math.max(56, Math.min(96, width / 10.5));
-  const tileHeight = Math.max(28, Math.min(48, tileWidth * 0.5));
+  const cols = 16;
+  const rows = 14;
+  const tileWidth = Math.max(40, Math.min(72, width / 16));
+  const tileHeight = Math.max(20, Math.min(36, tileWidth * 0.5));
   return {
     cols,
     rows,
     tileWidth,
     tileHeight,
-    originX: width * 0.5,
-    originY: height * 0.27,
+    originX: width * 0.52,
+    originY: height * 0.22,
   };
 }
 
@@ -1465,8 +1465,8 @@ function districtIsoFootprint(district, metrics) {
   return {
     centerX: center.x,
     centerY: center.y,
-    width: metrics.tileWidth * (district.w + district.h) * 0.52,
-    height: metrics.tileHeight * (district.w + district.h) * 0.52,
+    width: metrics.tileWidth * (district.w + district.h) * 0.9,
+    height: metrics.tileHeight * (district.w + district.h) * 0.86,
     tileWidth: metrics.tileWidth * district.w,
     tileHeight: metrics.tileHeight * district.h,
   };
@@ -1537,10 +1537,10 @@ function drawTerrainBase(context, width, height, palette, metrics) {
 
 function drawIsoRoads(context, width, height, metrics) {
   const avenues = [
-    [ [1.4, 2.6], [9.3, 2.6] ],
-    [ [2.0, 5.4], [9.1, 5.4] ],
-    [ [4.0, 1.4], [4.0, 7.4] ],
-    [ [6.75, 1.3], [6.75, 7.5] ],
+    [ [2.0, 4.0], [13.5, 4.0] ],
+    [ [3.0, 8.0], [13.0, 8.0] ],
+    [ [5.0, 2.0], [5.0, 11.5] ],
+    [ [9.0, 1.8], [9.0, 12.0] ],
   ];
   avenues.forEach(([start, end], index) => {
     const a = isoProject(start[0], start[1], metrics.originX, metrics.originY, metrics.tileWidth, metrics.tileHeight);
@@ -1585,42 +1585,47 @@ function drawDistrictGround(context, district, frame) {
 }
 
 function drawDistrictFallback(context, district, frame) {
-  const columns = district.type === 'park' ? 3 : 4;
-  const rows = district.type === 'park' ? 2 : 3;
+  const columns = district.type === 'park' ? 4 : 5;
+  const rows = district.type === 'park' ? 3 : 4;
   for (let row = 0; row < rows; row += 1) {
     for (let col = 0; col < columns; col += 1) {
-      const px = frame.center.x + (col - (columns - 1) * 0.5) * frame.w * 0.12 + row * frame.w * 0.03;
-      const py = frame.center.y + (row - 1) * frame.h * 0.08 + col * frame.h * 0.02;
-      const bw = frame.w * 0.12;
-      const bh = district.type === 'park' ? frame.h * 0.16 : frame.h * (0.2 + ((col + row) % 3) * 0.08);
-      context.fillStyle = district.type === 'park' ? 'rgba(98,160,92,0.9)' : 'rgba(18,24,31,0.92)';
+      const px = frame.center.x + (col - (columns - 1) * 0.5) * frame.w * 0.16 + row * frame.w * 0.035;
+      const py = frame.center.y + (row - 1.5) * frame.h * 0.1 + col * frame.h * 0.025;
+      const bw = frame.w * 0.14;
+      const bh = district.type === 'park' ? frame.h * 0.18 : frame.h * (0.24 + ((col + row) % 3) * 0.1);
+      context.fillStyle = district.type === 'park' ? 'rgba(98,160,92,0.95)' : 'rgba(24,30,38,0.98)';
       fillRoundedRect(context, px - bw * 0.5, py - bh, bw, bh, 4, context.fillStyle);
+      if (district.type !== 'park') {
+        context.fillStyle = 'rgba(255, 222, 153, 0.18)';
+        fillRoundedRect(context, px - bw * 0.28, py - bh * 0.72, bw * 0.56, bh * 0.1, 3, context.fillStyle);
+      }
     }
   }
 }
 
 function drawDistrictSprites(context, district, frame) {
   const spriteDefs = DISTRICT_SPRITES[district.type] ?? DISTRICT_SPRITES.mixed;
-  const buildingBandY = frame.center.y + frame.h * 0.06;
-  context.fillStyle = 'rgba(5, 9, 12, 0.22)';
+  const buildingBandY = frame.center.y + frame.h * 0.02;
+  context.fillStyle = 'rgba(5, 9, 12, 0.26)';
   context.beginPath();
-  context.ellipse(frame.center.x, buildingBandY + frame.h * 0.12, frame.w * 0.34, frame.h * 0.14, 0, 0, Math.PI * 2);
+  context.ellipse(frame.center.x, buildingBandY + frame.h * 0.15, frame.w * 0.42, frame.h * 0.17, 0, 0, Math.PI * 2);
   context.fill();
 
+  drawDistrictFallback(context, district, frame);
+
   if (!spriteLibrary.ready) {
-    drawDistrictFallback(context, district, frame);
     return;
   }
 
   spriteDefs.forEach((spriteDef, index) => {
     const image = spriteLibrary.images[spriteDef.sheet];
     if (!image) return;
-    const slotX = frame.center.x + (index - (spriteDefs.length - 1) * 0.5) * frame.w * 0.2;
-    const slotY = buildingBandY - index * frame.h * 0.055;
-    const scale = 0.8 + index * 0.08 + district.development * 0.12;
+    const slotX = frame.center.x + (index - (spriteDefs.length - 1) * 0.5) * frame.w * 0.24;
+    const slotY = buildingBandY - index * frame.h * 0.065;
+    const scale = 1 + index * 0.1 + district.development * 0.18;
     const dw = frame.w * spriteDef.anchor[2] * scale;
-    const dh = frame.h * (spriteDef.anchor[3] * 1.25) * (0.88 + district.condition * 0.18);
-    drawSpriteRegion(context, image, spriteDef.region, slotX - dw * 0.5, slotY - dh, dw, dh, 0.96);
+    const dh = frame.h * (spriteDef.anchor[3] * 1.45) * (0.95 + district.condition * 0.24);
+    drawSpriteRegion(context, image, spriteDef.region, slotX - dw * 0.5, slotY - dh, dw, dh, 0.98);
   });
 }
 
@@ -1707,12 +1712,12 @@ function drawBackdropCity(context, width, height, palette, skyline) {
 }
 
 function drawForegroundCanopy(context, width, height) {
-  context.fillStyle = 'rgba(9, 16, 20, 0.18)';
+  context.fillStyle = 'rgba(9, 16, 20, 0.08)';
   context.beginPath();
-  context.moveTo(width * 0.1, height * 0.88);
-  context.bezierCurveTo(width * 0.22, height * 0.8, width * 0.39, height * 0.84, width * 0.54, height * 0.92);
-  context.lineTo(width * 0.54, height);
-  context.lineTo(width * 0.1, height);
+  context.moveTo(width * 0.02, height * 0.94);
+  context.bezierCurveTo(width * 0.18, height * 0.9, width * 0.38, height * 0.91, width * 0.58, height * 0.95);
+  context.lineTo(width * 0.58, height);
+  context.lineTo(width * 0.02, height);
   context.closePath();
   context.fill();
 }
