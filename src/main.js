@@ -9,6 +9,13 @@ const SPEED_OPTIONS = [
   { label: '2x', value: 2, tickMs: 550 },
   { label: '4x', value: 4, tickMs: 280 },
 ];
+const TOOLBAR_ACTIONS = [
+  { key: 'inspect', icon: '[]', label: 'Inspect', kind: 'mode' },
+  { key: 'farm', icon: 'F', label: 'Fields', kind: 'action' },
+  { key: 'tax', icon: '$', label: 'Tax', kind: 'action' },
+  { key: 'festival', icon: '*', label: 'Calm', kind: 'action' },
+  { key: 'guard', icon: 'G', label: 'Watch', kind: 'action' },
+];
 const DISTRICT_LAYOUT = [
   { key: 'civic', label: 'Civic Core', type: 'civic', x: 0.38, y: 0.16, w: 0.24, h: 0.21 },
   { key: 'north', label: 'North Steps', type: 'residential', x: 0.64, y: 0.1, w: 0.22, h: 0.24 },
@@ -18,6 +25,18 @@ const DISTRICT_LAYOUT = [
   { key: 'industry', label: 'Ironworks', type: 'industrial', x: 0.67, y: 0.44, w: 0.19, h: 0.24 },
   { key: 'south', label: 'South Reach', type: 'mixed', x: 0.39, y: 0.65, w: 0.24, h: 0.19 },
 ];
+const LOT_LAYOUT = [
+  { key: 'west-yard', label: 'West Yard', x: 0.13, y: 0.77, w: 0.18, h: 0.11 },
+  { key: 'north-edge', label: 'North Edge', x: 0.61, y: 0.36, w: 0.16, h: 0.11 },
+  { key: 'east-slip', label: 'East Slip', x: 0.79, y: 0.34, w: 0.1, h: 0.16 },
+  { key: 'market-west', label: 'Market West', x: 0.28, y: 0.4, w: 0.09, h: 0.14 },
+  { key: 'south-bank', label: 'South Bank', x: 0.64, y: 0.73, w: 0.18, h: 0.11 },
+  { key: 'harbor-rise', label: 'Harbor Rise', x: 0.09, y: 0.36, w: 0.12, h: 0.08 },
+];
+
+let interactiveTargets = [];
+let resizeQueued = false;
+let frameHandle = 0;
 
 function createInitialState() {
   return {
@@ -48,38 +67,18 @@ function createInitialState() {
       lastFrameMs: 0,
       seasonLength: TICKS_PER_SEASON,
     },
+    ui: {
+      tool: 'inspect',
+      selectedId: 'district:civic',
+      hoveredId: null,
+    },
     log: [
-      'Stonehaven is founded beside a cold river valley. Balance food, coin, and public order as the city keeps moving.',
+      'Stonehaven opens as a compact live city. Click blocks, steer seasons, and work directly on the map.',
     ],
   };
 }
 
 let state = createInitialState();
-let resizeQueued = false;
-let frameHandle = 0;
-
-const actions = [
-  {
-    key: 'farm',
-    label: 'Expand Fields',
-    note: 'Spend treasury now, strengthen future harvests.',
-  },
-  {
-    key: 'tax',
-    label: 'Raise Taxes',
-    note: 'Boost coin quickly, but unrest rises.',
-  },
-  {
-    key: 'festival',
-    label: 'Hold Festival',
-    note: 'Reduce unrest and attract a few new families.',
-  },
-  {
-    key: 'guard',
-    label: 'Reinforce Watch',
-    note: 'Spend coin to keep the streets calm.',
-  },
-];
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -126,6 +125,10 @@ function mergeState(base, incoming) {
       ...base.sim,
       ...(incoming.sim ?? {}),
     },
+    ui: {
+      ...base.ui,
+      ...(incoming.ui ?? {}),
+    },
     log: Array.isArray(incoming.log) ? incoming.log.slice(0, LOG_LIMIT) : base.log,
   };
 }
@@ -143,6 +146,13 @@ function normalizeState() {
   state.sim.accumulatorMs = Math.max(0, state.sim.accumulatorMs || 0);
   state.sim.lastFrameMs = Math.max(0, state.sim.lastFrameMs || 0);
   state.sim.seasonProgress = clamp(state.sim.seasonTick / state.sim.seasonLength, 0, 1);
+
+  if (!state.ui) {
+    state.ui = { tool: 'inspect', selectedId: 'district:civic', hoveredId: null };
+  }
+  state.ui.tool = TOOLBAR_ACTIONS.some((item) => item.key === state.ui.tool) ? state.ui.tool : 'inspect';
+  state.ui.selectedId = state.ui.selectedId || 'district:civic';
+  state.ui.hoveredId = state.ui.hoveredId || null;
 
   if (!state.gameOver && state.resources.population <= 0) {
     state.gameOver = true;
@@ -163,25 +173,25 @@ function applyAction(type) {
       changeResource('treasury', -12);
       changeResource('food', 8);
       state.modifiers.farms += 1;
-      logEvent('You expand nearby fields. Seed stores shrink now, but future harvests will be stronger.');
+      logEvent('New field strips are opened beyond the road grid.');
     },
     tax() {
       changeResource('treasury', 18 + state.modifiers.markets * 2);
       changeResource('unrest', 7);
-      logEvent('Collectors sweep the markets. Coin flows in, and resentment follows.');
+      logEvent('The market levy is raised and coin starts moving faster.');
     },
     festival() {
       changeResource('treasury', -10);
       changeResource('food', -8);
       changeResource('unrest', -14);
       changeResource('population', 4);
-      logEvent('A civic festival restores morale and draws hopeful families into the city.');
+      logEvent('A short civic festival cools tempers and draws new households.');
     },
     guard() {
       changeResource('treasury', -14);
       state.modifiers.guard += 1;
       changeResource('unrest', -6);
-      logEvent('You reinforce the watch. Patrols steady the streets before the next unrest spike.');
+      logEvent('More watch posts appear across the busier blocks.');
     },
   };
 
@@ -213,7 +223,7 @@ function seasonalUnrestDelta(season) {
 }
 
 function turnSummary(season, harvest, foodDemand, taxes) {
-  return `${season} closes: +${harvest} food produced, ${foodDemand} food consumed, +${taxes} taxes collected.`;
+  return `${season} closes: +${harvest} food, ${foodDemand} food used, +${taxes} coin.`;
 }
 
 function seasonPressureProfile(season) {
@@ -252,16 +262,16 @@ function tickCity() {
     state.resources.food = 0;
     changeResource('population', -Math.ceil(shortage));
     changeResource('unrest', 5 + shortage * 1.5);
-    logEvent(`Granaries run empty mid-season. ${Math.ceil(shortage)} households leave and tempers flare.`);
+    logEvent(`Granaries empty out. ${Math.ceil(shortage)} households leave.`);
   }
 
   if (state.resources.treasury < -15) {
     changeResource('unrest', 3);
-    logEvent('Debt now delays wages and repairs. Street grumbling spreads.');
+    logEvent('Debt stalls repairs and public patience drops.');
   }
 
   if (state.resources.population > population + 1 && prosperity > 0) {
-    logEvent('Stable stores and calm streets attract new residents.');
+    logEvent('Calm streets and full stores pull in new residents.');
   }
 
   state.sim.tick += 1;
@@ -288,12 +298,12 @@ function advanceSeason() {
 
   if (state.resources.food > 120) {
     changeResource('population', 3 + state.modifiers.farms);
-    logEvent('A surplus season ends with migrants settling near the city edge.');
+    logEvent('The season ends with new migrants settling at the edge blocks.');
   }
 
   if (state.resources.unrest >= 60) {
     changeResource('population', -Math.ceil((state.resources.unrest - 55) / 18));
-    logEvent('Persistent unrest pushes some residents to quieter towns.');
+    logEvent('High unrest pushes some residents out of the city.');
   }
 
   logEvent(turnSummary(season, seasonalHarvest(season), Math.ceil(state.resources.population / 8), taxes));
@@ -308,9 +318,9 @@ function advanceSeason() {
     state.seasonIndex = 0;
     state.year += 1;
     state.modifiers.markets += 1;
-    logEvent('A new year begins. Market routines sharpen, improving the city tax base.');
+    logEvent('A new year opens and trade routines sharpen.');
   } else {
-    logEvent(`${currentSeason()} begins. The city rhythm shifts with the new weather.`);
+    logEvent(`${currentSeason()} begins and district rhythms shift.`);
   }
 
   normalizeState();
@@ -383,7 +393,7 @@ function seasonPalette(season) {
 
 function createDistrictMetrics() {
   const { population, food, treasury, unrest } = state.resources;
-  const liveStatus = state.gameOver ? 'Systems offline' : state.sim.paused ? 'Awaiting input' : `Flowing at ${currentSpeedOption().label}`;
+  const liveStatus = state.gameOver ? 'Offline' : state.sim.paused ? 'Waiting' : `Live ${currentSpeedOption().label}`;
 
   const housingDensity = clamp(Math.round(population / 22), 2, 8);
   const commerceDensity = clamp(state.modifiers.markets + Math.round(treasury / 35), 1, 6);
@@ -392,14 +402,29 @@ function createDistrictMetrics() {
   const industrialLoad = clamp(2 + Math.round(treasury / 40) + Math.round(unrest / 30), 2, 7);
 
   return {
-    civic: { intensity: clamp(3 + state.modifiers.guard + state.modifiers.markets, 3, 8), status: unrest > 50 ? 'Tense governance' : liveStatus },
-    north: { intensity: housingDensity, status: unrest > 60 ? 'Residents uneasy' : 'Housing occupied' },
-    harbor: { intensity: utilityLoad, status: food < 35 ? 'Supply constrained' : 'Utilities online' },
-    market: { intensity: commerceDensity, status: treasury < 20 ? 'Thin trade' : 'Trading actively' },
-    park: { intensity: farmDensity, status: food > 70 ? 'Productive green belt' : 'Fields under pressure' },
-    industry: { intensity: industrialLoad, status: treasury > 40 ? 'Factories humming' : 'Workshops steady' },
-    south: { intensity: clamp(2 + state.modifiers.farms + state.modifiers.markets, 2, 6), status: population > 150 ? 'Expansion underway' : 'Plots being staged' },
+    civic: { intensity: clamp(3 + state.modifiers.guard + state.modifiers.markets, 3, 8), status: unrest > 50 ? 'Tense' : liveStatus, facts: ['watch', 'trade', 'civic'] },
+    north: { intensity: housingDensity, status: unrest > 60 ? 'Uneasy' : 'Settled', facts: ['homes', 'density', 'calm'] },
+    harbor: { intensity: utilityLoad, status: food < 35 ? 'Tight' : 'Online', facts: ['water', 'power', 'flow'] },
+    market: { intensity: commerceDensity, status: treasury < 20 ? 'Thin' : 'Active', facts: ['trade', 'coin', 'footfall'] },
+    park: { intensity: farmDensity, status: food > 70 ? 'Productive' : 'Dry', facts: ['green', 'food', 'relief'] },
+    industry: { intensity: industrialLoad, status: treasury > 40 ? 'Hot' : 'Steady', facts: ['work', 'smoke', 'output'] },
+    south: { intensity: clamp(2 + state.modifiers.farms + state.modifiers.markets, 2, 6), status: population > 150 ? 'Expanding' : 'Staged', facts: ['growth', 'plots', 'mix'] },
   };
+}
+
+function createLotMetrics() {
+  const { population, food, treasury, unrest } = state.resources;
+  const readyScore = clamp(Math.round((treasury + food) / 30), 2, 8);
+
+  return LOT_LAYOUT.map((lot, index) => ({
+    ...lot,
+    id: `lot:${lot.key}`,
+    kind: 'lot',
+    type: 'lot',
+    intensity: clamp(readyScore + (index % 3) - Math.round(unrest / 35), 1, 9),
+    status: unrest > 55 ? 'Hold' : treasury < 18 ? 'Thin funds' : 'Buildable',
+    pressure: clamp(Math.round(population / 30) + index, 2, 9),
+  }));
 }
 
 function createCityViewModel() {
@@ -415,15 +440,18 @@ function createCityViewModel() {
   const districts = DISTRICT_LAYOUT.map((district) => ({
     ...district,
     ...districtMetrics[district.key],
+    id: `district:${district.key}`,
+    kind: 'district',
   }));
 
   return {
     palette,
     districts,
+    lots: createLotMetrics(),
     overlays: [
-      { label: 'Power', value: `${powerLevel}%`, tone: powerLevel > 70 ? 'good' : powerLevel > 45 ? 'warn' : 'danger' },
-      { label: 'Water', value: `${waterLevel}%`, tone: waterLevel > 70 ? 'good' : waterLevel > 50 ? 'warn' : 'danger' },
-      { label: 'Transit', value: `${transitLevel}%`, tone: transitLevel > 70 ? 'good' : transitLevel > 45 ? 'warn' : 'danger' },
+      { label: 'PWR', value: `${powerLevel}%`, tone: powerLevel > 70 ? 'good' : powerLevel > 45 ? 'warn' : 'danger' },
+      { label: 'WTR', value: `${waterLevel}%`, tone: waterLevel > 70 ? 'good' : waterLevel > 50 ? 'warn' : 'danger' },
+      { label: 'TRN', value: `${transitLevel}%`, tone: transitLevel > 70 ? 'good' : transitLevel > 45 ? 'warn' : 'danger' },
     ],
     demand: {
       housing: clamp(Math.round(population / 16), 4, 10),
@@ -437,6 +465,16 @@ function createCityViewModel() {
     },
     stats: { population, food, treasury, unrest, season, activityLevel },
   };
+}
+
+function getSelectedEntity(viewModel) {
+  const entities = [...viewModel.districts, ...viewModel.lots];
+  return entities.find((entity) => entity.id === state.ui.selectedId) ?? viewModel.districts[0];
+}
+
+function getEntityById(viewModel, id) {
+  const entities = [...viewModel.districts, ...viewModel.lots];
+  return entities.find((entity) => entity.id === id) ?? null;
 }
 
 function roundedRect(context, x, y, width, height, radius) {
@@ -472,6 +510,7 @@ function districtColor(type) {
     industrial: ['#f19e65', '#633d21'],
     park: ['#85c983', '#284d31'],
     mixed: ['#d79eff', '#5c3b67'],
+    lot: ['#b0c4cf', '#2e3f49'],
   };
 
   return colors[type] ?? colors.mixed;
@@ -521,6 +560,35 @@ function drawWaterfront(context, width, height, palette) {
   context.lineTo(0, height);
   context.closePath();
   context.fill();
+}
+
+function drawLot(context, lot, width, height, selectionState) {
+  const x = lot.x * width;
+  const y = lot.y * height;
+  const w = lot.w * width;
+  const h = lot.h * height;
+  const radius = Math.max(14, width * 0.015);
+
+  fillRoundedRect(context, x, y, w, h, radius, 'rgba(12, 20, 27, 0.4)');
+  strokeRoundedRect(context, x, y, w, h, radius, 'rgba(210, 229, 239, 0.22)', 1.2);
+
+  context.setLineDash([8, 8]);
+  strokeRoundedRect(context, x + 4, y + 4, w - 8, h - 8, radius - 4, 'rgba(255, 255, 255, 0.12)', 1);
+  context.setLineDash([]);
+
+  context.fillStyle = 'rgba(224, 238, 245, 0.88)';
+  context.font = `600 ${Math.max(11, width * 0.012)}px "Trebuchet MS", sans-serif`;
+  context.fillText(lot.label, x + w * 0.08, y + h * 0.38);
+  context.fillStyle = 'rgba(168, 191, 204, 0.9)';
+  context.font = `500 ${Math.max(10, width * 0.01)}px "Trebuchet MS", sans-serif`;
+  context.fillText(lot.status, x + w * 0.08, y + h * 0.64);
+
+  if (selectionState !== 'idle') {
+    const color = selectionState === 'selected' ? 'rgba(133, 220, 255, 0.96)' : 'rgba(255, 213, 138, 0.9)';
+    strokeRoundedRect(context, x - 2, y - 2, w + 4, h + 4, radius + 2, color, selectionState === 'selected' ? 3 : 2);
+  }
+
+  interactiveTargets.push({ id: lot.id, x, y, w, h });
 }
 
 function drawDistrictBuildings(context, district, frame) {
@@ -580,7 +648,7 @@ function drawDistrictBuildings(context, district, frame) {
   }
 }
 
-function drawDistrict(context, district, width, height) {
+function drawDistrict(context, district, width, height, selectionState) {
   const x = district.x * width;
   const y = district.y * height;
   const w = district.w * width;
@@ -595,38 +663,49 @@ function drawDistrict(context, district, width, height) {
 
   context.fillStyle = 'rgba(255, 255, 255, 0.05)';
   fillRoundedRect(context, x + w * 0.04, y + h * 0.06, w * 0.92, h * 0.88, Math.max(12, width * 0.015), context.fillStyle);
-
   drawDistrictBuildings(context, district, { x: x + w * 0.05, y: y + h * 0.18, w: w * 0.9, h: h * 0.72 });
 
   context.fillStyle = '#f5fbff';
-  context.font = `600 ${Math.max(12, width * 0.018)}px "Trebuchet MS", sans-serif`;
+  context.font = `700 ${Math.max(12, width * 0.016)}px "Trebuchet MS", sans-serif`;
   context.fillText(district.label, x + w * 0.07, y + h * 0.16);
+  context.fillStyle = 'rgba(235, 246, 255, 0.82)';
+  context.font = `500 ${Math.max(10, width * 0.012)}px "Trebuchet MS", sans-serif`;
+  context.fillText(district.status, x + w * 0.07, y + h * 0.27);
 
-  context.fillStyle = 'rgba(235, 246, 255, 0.8)';
-  context.font = `500 ${Math.max(10, width * 0.013)}px "Trebuchet MS", sans-serif`;
-  context.fillText(district.status, x + w * 0.07, y + h * 0.26);
+  if (selectionState !== 'idle') {
+    const color = selectionState === 'selected' ? 'rgba(133, 220, 255, 0.98)' : 'rgba(255, 213, 138, 0.92)';
+    const shadow = selectionState === 'selected' ? 'rgba(133, 220, 255, 0.28)' : 'rgba(255, 213, 138, 0.2)';
+    context.save();
+    context.shadowColor = shadow;
+    context.shadowBlur = 22;
+    strokeRoundedRect(context, x - 3, y - 3, w + 6, h + 6, Math.max(20, width * 0.02), color, selectionState === 'selected' ? 3.5 : 2.2);
+    context.restore();
+  }
+
+  interactiveTargets.push({ id: district.id, x, y, w, h });
 }
 
 function drawUtilities(context, width, height, overlays) {
-  const startX = width * 0.7;
-  const y = height * 0.08;
-  const chipWidth = width * 0.08;
+  const startX = width * 0.73;
+  const y = height * 0.06;
+  const chipWidth = width * 0.07;
 
   overlays.forEach((overlay, index) => {
     const x = startX + index * chipWidth;
-    fillRoundedRect(context, x, y, chipWidth - 8, height * 0.08, 18, 'rgba(8, 16, 24, 0.7)');
-    strokeRoundedRect(context, x, y, chipWidth - 8, height * 0.08, 18, 'rgba(255, 255, 255, 0.08)', 1);
+    fillRoundedRect(context, x, y, chipWidth - 8, height * 0.072, 18, 'rgba(8, 16, 24, 0.72)');
+    strokeRoundedRect(context, x, y, chipWidth - 8, height * 0.072, 18, 'rgba(255, 255, 255, 0.08)', 1);
     context.fillStyle = '#dbeeff';
-    context.font = `600 ${Math.max(11, width * 0.012)}px "Trebuchet MS", sans-serif`;
-    context.fillText(overlay.label, x + 12, y + 20);
+    context.font = `700 ${Math.max(10, width * 0.01)}px "Trebuchet MS", sans-serif`;
+    context.fillText(overlay.label, x + 12, y + 18);
     context.fillStyle = overlay.tone === 'good' ? '#9ee2ad' : overlay.tone === 'warn' ? '#ffd37f' : '#ff9f91';
-    context.font = `700 ${Math.max(11, width * 0.013)}px "Trebuchet MS", sans-serif`;
-    context.fillText(overlay.value, x + 12, y + 40);
+    context.font = `700 ${Math.max(11, width * 0.012)}px "Trebuchet MS", sans-serif`;
+    context.fillText(overlay.value, x + 12, y + 36);
   });
 }
 
 function drawMap(context, viewModel, width, height) {
-  const { palette, districts, overlays, skyline, stats } = viewModel;
+  interactiveTargets = [];
+  const { palette, districts, lots, overlays, skyline, stats } = viewModel;
   const sky = context.createLinearGradient(0, 0, 0, height);
   sky.addColorStop(0, palette.skyTop);
   sky.addColorStop(0.42, palette.skyBottom);
@@ -642,29 +721,38 @@ function drawMap(context, viewModel, width, height) {
 
   drawWaterfront(context, width, height, palette);
   drawRoadNetwork(context, width, height);
-  districts.forEach((district) => drawDistrict(context, district, width, height));
+
+  lots.forEach((lot) => {
+    const selectionState = state.ui.selectedId === lot.id ? 'selected' : state.ui.hoveredId === lot.id ? 'hovered' : 'idle';
+    drawLot(context, lot, width, height, selectionState);
+  });
+
+  districts.forEach((district) => {
+    const selectionState = state.ui.selectedId === district.id ? 'selected' : state.ui.hoveredId === district.id ? 'hovered' : 'idle';
+    drawDistrict(context, district, width, height, selectionState);
+  });
+
   drawUtilities(context, width, height, overlays);
 
   context.fillStyle = 'rgba(8, 15, 22, 0.65)';
-  fillRoundedRect(context, width * 0.03, height * 0.05, width * 0.24, height * 0.14, 22, context.fillStyle);
+  fillRoundedRect(context, width * 0.03, height * 0.05, width * 0.23, height * 0.12, 22, context.fillStyle);
   context.fillStyle = '#f1f8ff';
-  context.font = `700 ${Math.max(14, width * 0.021)}px "Trebuchet MS", sans-serif`;
-  context.fillText(`${state.cityName} Regional Plan`, width * 0.05, height * 0.105);
-  context.font = `500 ${Math.max(12, width * 0.014)}px "Trebuchet MS", sans-serif`;
+  context.font = `700 ${Math.max(14, width * 0.018)}px "Trebuchet MS", sans-serif`;
+  context.fillText(`${state.cityName} Grid`, width * 0.05, height * 0.102);
+  context.font = `500 ${Math.max(12, width * 0.013)}px "Trebuchet MS", sans-serif`;
   context.fillStyle = 'rgba(219, 238, 255, 0.82)';
-  context.fillText(`${stats.season} · Year ${state.year} · Turn ${state.turn}`, width * 0.05, height * 0.145);
-  context.fillText(`Population ${stats.population} · Treasury ${stats.treasury} · Unrest ${stats.unrest}%`, width * 0.05, height * 0.175);
+  context.fillText(`${stats.season} · Y${state.year} · T${state.turn}`, width * 0.05, height * 0.138);
 
   context.fillStyle = 'rgba(8, 15, 22, 0.58)';
-  fillRoundedRect(context, width * 0.03, height * 0.82, width * 0.24, height * 0.09, 18, context.fillStyle);
+  fillRoundedRect(context, width * 0.03, height * 0.84, width * 0.26, height * 0.08, 18, context.fillStyle);
   context.fillStyle = '#dbeeff';
   context.font = `600 ${Math.max(11, width * 0.013)}px "Trebuchet MS", sans-serif`;
-  context.fillText(state.sim.paused ? 'Simulation paused' : `Live at ${currentSpeedOption().label}`, width * 0.05, height * 0.865);
-  context.fillText(`Activity ${stats.activityLevel}%`, width * 0.18, height * 0.865);
+  context.fillText(state.sim.paused ? 'Paused' : `Live ${currentSpeedOption().label}`, width * 0.05, height * 0.875);
+  context.fillText(`ACT ${stats.activityLevel}%`, width * 0.19, height * 0.875);
   context.fillStyle = 'rgba(255, 255, 255, 0.12)';
-  fillRoundedRect(context, width * 0.05, height * 0.883, width * 0.18, height * 0.014, 999, context.fillStyle);
+  fillRoundedRect(context, width * 0.05, height * 0.89, width * 0.2, height * 0.014, 999, context.fillStyle);
   context.fillStyle = state.sim.paused ? '#ffd37f' : '#84dcff';
-  fillRoundedRect(context, width * 0.05, height * 0.883, width * 0.18 * state.sim.seasonProgress, height * 0.014, 999, context.fillStyle);
+  fillRoundedRect(context, width * 0.05, height * 0.89, width * 0.2 * state.sim.seasonProgress, height * 0.014, 999, context.fillStyle);
 
   for (let tower = 0; tower < skyline.towers; tower += 1) {
     const x = width * (0.28 + tower * 0.07);
@@ -717,172 +805,314 @@ function paintCityMap() {
   drawMap(context, createCityViewModel(), width, height);
 }
 
-function demandMarkup(viewModel) {
-  return Object.entries(viewModel.demand).map(([key, value]) => `
-    <div class="demand-row">
-      <span>${key}</span>
-      <div class="demand-meter"><i style="width:${value * 10}%"></i></div>
-      <strong>${value}/10</strong>
-    </div>
-  `).join('');
+function canvasPoint(event, canvas) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: event.clientX - rect.left,
+    y: event.clientY - rect.top,
+  };
 }
 
-function districtCardsMarkup(viewModel) {
-  return viewModel.districts.map((district) => `
-    <article class="district-card district-card-${district.type}">
-      <header>
-        <strong>${district.label}</strong>
-        <span>Intensity ${district.intensity}</span>
-      </header>
-      <p>${district.status}</p>
-    </article>
+function hitTestCanvas(point) {
+  return [...interactiveTargets].reverse().find((target) => (
+    point.x >= target.x
+    && point.x <= target.x + target.w
+    && point.y >= target.y
+    && point.y <= target.y + target.h
+  )) ?? null;
+}
+
+function setHovered(id) {
+  if (state.ui.hoveredId === id) return;
+  state.ui.hoveredId = id;
+  paintCityMap();
+}
+
+function setSelected(id) {
+  if (state.ui.selectedId === id) return;
+  state.ui.selectedId = id;
+  render();
+}
+
+function setTool(tool) {
+  if (!TOOLBAR_ACTIONS.some((item) => item.key === tool)) return;
+  state.ui.tool = tool;
+  render();
+}
+
+function runCanvasAction(actionKey, entityId) {
+  state.ui.selectedId = entityId;
+  applyAction(actionKey);
+}
+
+function canvasInteractionLabel() {
+  if (state.gameOver) return 'Offline';
+  if (state.actionsLeft <= 0) return 'No acts';
+  const tool = TOOLBAR_ACTIONS.find((item) => item.key === state.ui.tool);
+  return tool ? tool.label : 'Inspect';
+}
+
+function toolbarMarkup() {
+  return TOOLBAR_ACTIONS.map((tool) => `
+    <button
+      class="toolbar-button ${tool.kind === 'action' ? 'is-build' : ''} ${state.ui.tool === tool.key ? 'is-active' : ''}"
+      type="button"
+      data-tool="${tool.key}"
+      ${tool.kind === 'action' && (state.actionsLeft <= 0 || state.gameOver) ? 'disabled' : ''}
+    >
+      <span class="toolbar-icon">${tool.icon}</span>
+      <strong>${tool.label}</strong>
+    </button>
   `).join('');
 }
 
 function speedControlsMarkup() {
   return SPEED_OPTIONS.map((option) => `
-    <button class="button speed-button ${option.value === state.sim.speed ? 'is-active' : ''}" type="button" data-speed="${option.value}" ${state.gameOver ? 'disabled' : ''}>${option.label}</button>
+    <button class="speed-chip ${option.value === state.sim.speed ? 'is-active' : ''}" type="button" data-speed="${option.value}" ${state.gameOver ? 'disabled' : ''}>${option.label}</button>
   `).join('');
+}
+
+function toneLabel(key, value) {
+  const tone = resourceTone(key, value);
+  if (tone === 'good') return 'Stable';
+  if (tone === 'warn') return 'Watch';
+  return 'Critical';
+}
+
+function selectionActions(entity) {
+  if (!entity) return [];
+
+  if (entity.kind === 'lot') {
+    return [
+      { key: 'farm', icon: 'F', title: 'Seed', note: '+food' },
+      { key: 'tax', icon: '$', title: 'Trade', note: '+coin' },
+      { key: 'guard', icon: 'G', title: 'Secure', note: '-risk' },
+    ];
+  }
+
+  const byType = {
+    civic: [
+      { key: 'festival', icon: '*', title: 'Calm', note: '-unrest' },
+      { key: 'guard', icon: 'G', title: 'Watch', note: '+order' },
+      { key: 'tax', icon: '$', title: 'Levy', note: '+coin' },
+    ],
+    residential: [
+      { key: 'festival', icon: '*', title: 'Calm', note: '-unrest' },
+      { key: 'guard', icon: 'G', title: 'Patrol', note: '+order' },
+      { key: 'farm', icon: 'F', title: 'Supply', note: '+food' },
+    ],
+    utility: [
+      { key: 'guard', icon: 'G', title: 'Watch', note: '+stability' },
+      { key: 'tax', icon: '$', title: 'Bill', note: '+coin' },
+      { key: 'farm', icon: 'F', title: 'Store', note: '+food' },
+    ],
+    commercial: [
+      { key: 'tax', icon: '$', title: 'Levy', note: '+coin' },
+      { key: 'festival', icon: '*', title: 'Buzz', note: '+people' },
+      { key: 'guard', icon: 'G', title: 'Watch', note: '-risk' },
+    ],
+    park: [
+      { key: 'farm', icon: 'F', title: 'Grow', note: '+food' },
+      { key: 'festival', icon: '*', title: 'Rest', note: '-unrest' },
+      { key: 'guard', icon: 'G', title: 'Fence', note: '+order' },
+    ],
+    industrial: [
+      { key: 'tax', icon: '$', title: 'Output', note: '+coin' },
+      { key: 'guard', icon: 'G', title: 'Watch', note: '-risk' },
+      { key: 'festival', icon: '*', title: 'Shift', note: '-heat' },
+    ],
+    mixed: [
+      { key: 'farm', icon: 'F', title: 'Supply', note: '+food' },
+      { key: 'tax', icon: '$', title: 'Trade', note: '+coin' },
+      { key: 'festival', icon: '*', title: 'Calm', note: '-unrest' },
+    ],
+  };
+
+  return byType[entity.type] ?? byType.mixed;
+}
+
+function inspectorMarkup(viewModel) {
+  const selected = getSelectedEntity(viewModel);
+  const { population, food, treasury, unrest } = state.resources;
+  const facts = selected.kind === 'lot'
+    ? [
+        { icon: 'R', label: 'Ready', value: `${selected.intensity}/9` },
+        { icon: 'P', label: 'Pull', value: `${selected.pressure}/9` },
+        { icon: 'A', label: 'Acts', value: `${state.actionsLeft}/${ACTION_LIMIT}` },
+      ]
+    : [
+        { icon: 'I', label: 'Intensity', value: `${selected.intensity}/9` },
+        { icon: 'P', label: 'Pop', value: `${population}` },
+        { icon: 'U', label: 'Unrest', value: `${unrest}%` },
+      ];
+
+  const actionsMarkup = selectionActions(selected).map((item) => `
+    <button class="action-chip ${state.ui.tool === item.key ? 'is-primary' : ''}" type="button" data-panel-action="${item.key}" data-entity="${selected.id}" ${state.actionsLeft <= 0 || state.gameOver ? 'disabled' : ''}>
+      <span class="toolbar-icon">${item.icon}</span>
+      <strong>${item.title}</strong>
+      <span>${item.note}</span>
+    </button>
+  `).join('');
+
+  return `
+    <section class="floating-panel inspector" aria-label="Context panel">
+      <div class="panel-head">
+        <span class="panel-kicker">${selected.kind === 'lot' ? 'Open Lot' : 'District'}</span>
+        <div class="panel-title-row">
+          <strong>${selected.label}</strong>
+          <span class="status-pill">${selected.status}</span>
+        </div>
+        <p class="panel-status">${selected.kind === 'lot' ? 'Ready for a direct city action.' : `${selected.label} is ${selected.status.toLowerCase()}.`}</p>
+      </div>
+      <div class="fact-grid">
+        ${facts.map((fact) => `
+          <div class="fact-chip">
+            <span class="fact-icon">${fact.icon}</span>
+            <span>${fact.label}</span>
+            <strong>${fact.value}</strong>
+          </div>
+        `).join('')}
+      </div>
+      <div class="panel-actions">
+        ${actionsMarkup}
+      </div>
+      <div class="mini-grid">
+        <div class="mini-card">
+          <span class="mini-label">Food</span>
+          <strong>${food}</strong>
+        </div>
+        <div class="mini-card">
+          <span class="mini-label">Coin</span>
+          <strong>${treasury}</strong>
+        </div>
+      </div>
+    </section>
+  `;
 }
 
 function render() {
   const { population, food, treasury, unrest } = state.resources;
   const viewModel = createCityViewModel();
-  const simState = state.gameOver ? 'Collapse' : state.sim.paused ? 'Paused' : 'Running';
-  const progressPercent = Math.round(state.sim.seasonProgress * 100);
+  const simState = state.gameOver ? 'status-danger' : state.sim.paused ? 'status-paused' : 'status-live';
 
   app.innerHTML = `
-    <main class="shell">
-      <section class="topbar panel">
-        <div class="topbar-title">
-          <p class="eyebrow">City Command Board</p>
-          <h1>${state.cityName}</h1>
-          <p class="topbar-copy">A visible city that keeps evolving on its own. Pause, change speed, and intervene while the districts react live.</p>
-        </div>
-        <div class="topbar-meta">
-          <div class="meta-pill">
-            <span>Simulation</span>
-            <strong>${simState} · ${currentSpeedOption().label}</strong>
-            <p>${state.gameOver ? 'The charter failed and the simulation halted.' : `${state.actionsLeft} civic actions left before ${nextSeason()}.`}</p>
-          </div>
-          <div class="meta-pill">
-            <span>Clock</span>
-            <strong>${currentSeason()} · Year ${state.year}</strong>
-            <p>${progressPercent}% through the current season, ${state.sim.tick} ticks processed.</p>
-          </div>
-          <div class="meta-actions">
-            <button class="button button-primary" type="button" data-action="toggle-pause" ${state.gameOver ? 'disabled' : ''}>${state.sim.paused ? 'Resume Simulation' : 'Pause Simulation'}</button>
-            <button class="button button-secondary" type="button" data-action="advance" ${state.gameOver ? 'disabled' : ''}>Rush To Next Season</button>
-            <button class="button button-secondary" type="button" data-action="reset">Restart Charter</button>
-          </div>
-          <div class="sim-controls" role="group" aria-label="Simulation speed">
-            <span class="sim-pill ${state.sim.paused ? 'is-paused' : 'is-live'}">${state.sim.paused ? 'Paused' : `Live ${currentSpeedOption().label}`}</span>
-            ${speedControlsMarkup()}
-          </div>
-        </div>
-      </section>
-
-      <section class="summary-grid" aria-label="City summary">
-        <article class="summary-card panel accent-cyan ${resourceTone('population', population)}">
-          <p>Population</p><strong>${population}</strong><span>Residents currently housed across active districts.</span>
-        </article>
-        <article class="summary-card panel accent-amber ${resourceTone('food', food)}">
-          <p>Food Reserve</p><strong>${food}</strong><span>Granaries rise and fall as each simulation tick lands.</span>
-        </article>
-        <article class="summary-card panel accent-green ${resourceTone('treasury', treasury)}">
-          <p>Treasury</p><strong>${treasury}</strong><span>Funds utilities, patrols, and the strain of continuous upkeep.</span>
-        </article>
-        <article class="summary-card panel accent-rose ${resourceTone('unrest', unrest)}">
-          <p>Civic Pulse</p><strong>${unrest}%</strong><span>Higher unrest darkens the city and starts pushing residents out.</span>
-        </article>
-      </section>
-
-      <section class="workspace">
-        <section class="map-panel panel" aria-labelledby="city-map-title">
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow">Regional View</p>
-              <h2 id="city-map-title">Graphical City Map</h2>
-            </div>
-            <div class="section-pills">
-              <span class="board-tag">${state.actionsLeft} actions left</span>
-              <span class="board-tag">Next: ${nextSeason()}</span>
-              <span class="board-tag">${progressPercent}% season progress</span>
-            </div>
-          </div>
+    <main class="app-shell">
+      <section class="game-shell">
+        <div class="city-stage">
           <div class="city-map-frame">
-            <canvas data-city-canvas aria-label="Canvas map showing roads, blocks, districts, utilities, and buildings for the simulated city"></canvas>
+            <canvas data-city-canvas aria-label="Interactive city canvas with districts, empty lots, and buildable blocks"></canvas>
           </div>
-          <div class="map-footer">
-            <div class="board-legend" aria-label="Map legend">
-              <span><i class="swatch swatch-road"></i> Road grid</span>
-              <span><i class="swatch swatch-civic"></i> Civic / mixed core</span>
-              <span><i class="swatch swatch-housing"></i> Housing</span>
-              <span><i class="swatch swatch-industry"></i> Industry</span>
-              <span><i class="swatch swatch-green"></i> Parks / farms</span>
-              <span><i class="swatch swatch-utility"></i> Utilities</span>
+          <div class="stage-overlay">
+            <div class="overlay-column">
+              <section class="floating-panel hud" aria-label="City HUD">
+                <div class="hud-title">
+                  <span class="hud-kicker">Canvas City</span>
+                  <strong>${state.cityName}</strong>
+                  <div class="hud-subline">
+                    <span class="capsule ${simState}">
+                      <span class="chip-icon">${state.sim.paused ? '||' : '>>'}</span>
+                      <strong>${state.gameOver ? 'Collapse' : state.sim.paused ? 'Paused' : `Live ${currentSpeedOption().label}`}</strong>
+                    </span>
+                    <span class="capsule">
+                      <span class="chip-icon">Y</span>
+                      <strong>${currentSeason()} · ${state.year}</strong>
+                    </span>
+                    <span class="capsule">
+                      <span class="chip-icon">A</span>
+                      <strong>${state.actionsLeft}/${ACTION_LIMIT}</strong>
+                    </span>
+                  </div>
+                </div>
+                <div class="hud-stats">
+                  <span class="stat-chip">
+                    <span class="chip-icon">P</span>
+                    <span class="chip-label">Pop</span>
+                    <strong>${population}</strong>
+                  </span>
+                  <span class="stat-chip">
+                    <span class="chip-icon">F</span>
+                    <span class="chip-label">${toneLabel('food', food)}</span>
+                    <strong>${food}</strong>
+                  </span>
+                  <span class="stat-chip">
+                    <span class="chip-icon">$</span>
+                    <span class="chip-label">${toneLabel('treasury', treasury)}</span>
+                    <strong>${treasury}</strong>
+                  </span>
+                  <span class="stat-chip">
+                    <span class="chip-icon">U</span>
+                    <span class="chip-label">${toneLabel('unrest', unrest)}</span>
+                    <strong>${unrest}%</strong>
+                  </span>
+                </div>
+              </section>
+
+              <div class="stage-bottom">
+                <section class="floating-panel toolbar" aria-label="Build toolbar">
+                  <div class="toolbar-row">
+                    <span class="toolbar-label">Tools</span>
+                    <div class="toolbar-group">
+                      ${toolbarMarkup()}
+                    </div>
+                  </div>
+                  <div class="toolbar-row">
+                    <button class="toolbar-toggle ${state.sim.paused ? 'is-primary' : ''}" type="button" data-action="toggle-pause" ${state.gameOver ? 'disabled' : ''}>${state.sim.paused ? 'Resume' : 'Pause'}</button>
+                    <button class="toolbar-toggle" type="button" data-action="advance" ${state.gameOver ? 'disabled' : ''}>Next</button>
+                    <button class="toolbar-toggle" type="button" data-action="reset">Reset</button>
+                    <div class="speed-track">${speedControlsMarkup()}</div>
+                  </div>
+                </section>
+
+                <section class="floating-panel ticker" aria-label="City activity">
+                  <div class="ticker-row">
+                    <span class="ticker-dot"></span>
+                    <strong>${canvasInteractionLabel()}</strong>
+                    <span>Click districts or open lots.</span>
+                  </div>
+                  ${state.log.slice(0, 2).map((entry) => `
+                    <div class="ticker-row">
+                      <span class="ticker-dot"></span>
+                      <span>${entry}</span>
+                    </div>
+                  `).join('')}
+                </section>
+              </div>
             </div>
-            <div class="demand-panel">
-              <h3>Pressure Map</h3>
-              ${demandMarkup(viewModel)}
+
+            <div class="inspector-column">
+              ${inspectorMarkup(viewModel)}
             </div>
           </div>
-        </section>
-
-        <aside class="sidebar panel" aria-labelledby="control-panel-title">
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow">Operations</p>
-              <h2 id="control-panel-title">City Systems</h2>
-            </div>
-          </div>
-
-          <div class="control-stack">
-            <section class="control-group">
-              <h3>Season Actions</h3>
-              ${actions.map((action) => `
-                <button class="button control-button" type="button" data-build="${action.key}" ${state.actionsLeft <= 0 || state.gameOver ? 'disabled' : ''}>
-                  <strong>${action.label}</strong>
-                  <span>${action.note}</span>
-                </button>
-              `).join('')}
-            </section>
-
-            <section class="control-group district-stack">
-              <h3>District Readout</h3>
-              ${districtCardsMarkup(viewModel)}
-            </section>
-
-            <section class="control-group">
-              <h3>Simulation State</h3>
-              <div class="status-row"><span>Current season</span><strong>${currentSeason()}</strong></div>
-              <div class="status-row"><span>Next season</span><strong>${nextSeason()}</strong></div>
-              <div class="status-row"><span>Season progress</span><strong>${progressPercent}%</strong></div>
-              <div class="status-row"><span>Total ticks</span><strong>${state.sim.tick}</strong></div>
-              <div class="status-row"><span>Yearly trade bonus</span><strong>+${state.modifiers.markets}</strong></div>
-              <div class="status-row"><span>Watch strength</span><strong>${state.modifiers.guard}</strong></div>
-              <div class="status-row"><span>Farm network</span><strong>${state.modifiers.farms}</strong></div>
-            </section>
-
-            <section class="control-group">
-              <h3>Simulation Hooks</h3>
-              <div class="status-row"><span>UI bridge</span><strong>window.citySimUI</strong></div>
-              <div class="status-row"><span>State snapshot</span><strong>window.citySimState</strong></div>
-            </section>
-
-            <section class="control-group">
-              <h3>Founding Chronicle</h3>
-              <ul class="advisory-list log">
-                ${state.log.map((entry) => `<li>${entry}</li>`).join('')}
-              </ul>
-            </section>
-          </div>
-        </aside>
+        </div>
       </section>
     </main>
   `;
 
   paintCityMap();
+
+  const canvas = document.querySelector('[data-city-canvas]');
+  if (canvas) {
+    canvas.addEventListener('pointermove', (event) => {
+      const point = canvasPoint(event, canvas);
+      const hit = hitTestCanvas(point);
+      setHovered(hit?.id ?? null);
+    });
+    canvas.addEventListener('pointerleave', () => {
+      setHovered(null);
+    });
+    canvas.addEventListener('click', (event) => {
+      const point = canvasPoint(event, canvas);
+      const hit = hitTestCanvas(point);
+      if (!hit) return;
+
+      if (state.ui.tool !== 'inspect' && !state.gameOver && state.actionsLeft > 0) {
+        runCanvasAction(state.ui.tool, hit.id);
+        return;
+      }
+
+      setSelected(hit.id);
+    });
+  }
 }
 
 function simulationFrame(timestamp) {
@@ -919,15 +1149,16 @@ app.addEventListener('click', (event) => {
   const target = event.target.closest('button');
   if (!target) return;
 
-  const { action, build, speed } = target.dataset;
+  const { action, speed, tool, panelAction, entity } = target.dataset;
   if (action === 'advance') rushSeason();
   if (action === 'toggle-pause') togglePause();
   if (action === 'reset') {
     state = createInitialState();
     render();
   }
-  if (build) applyAction(build);
   if (speed) setSpeed(Number(speed));
+  if (tool) setTool(tool);
+  if (panelAction && entity) runCanvasAction(panelAction, entity);
 });
 
 window.citySimState = {
