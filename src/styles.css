@@ -502,10 +502,26 @@ select {
 }
 
 .district-card {
+  width: 100%;
+  text-align: left;
   padding: 14px 16px;
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.06);
   background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background-color 160ms ease;
+}
+
+.district-card:hover {
+  transform: translateY(-1px);
+}
+
+.district-card.is-selected {
+  border-color: rgba(244, 251, 255, 0.44);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .district-card header {
@@ -518,6 +534,76 @@ select {
 .district-card p {
   margin: 8px 0 0;
   line-height: 1.45;
+}
+
+.district-mini-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.district-mini-metrics span,
+.detail-cell span,
+.selection-header span {
+  color: var(--muted);
+}
+
+.selection-detail {
+  display: grid;
+  gap: 12px;
+}
+
+.selection-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.detail-cell {
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.detail-cell span {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.8rem;
+}
+
+.detail-cell strong {
+  display: block;
+  line-height: 1.35;
+}
+
+.asset-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.asset-chip {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  padding: 10px 14px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+}
+
+.asset-chip.is-selected {
+  color: #032132;
+  background: linear-gradient(135deg, #b6f0ff, #59d0ff);
+  border-color: transparent;
 }
 
 .district-card-civic {
@@ -617,6 +703,7 @@ select {
 
   .section-heading,
   .district-card header,
+  .selection-header,
   .sim-controls {
     flex-direction: column;
   }
@@ -635,5 +722,9 @@ select {
 
   .demand-row {
     grid-template-columns: 54px minmax(0, 1fr) 40px;
+  }
+
+  .detail-grid {
+    grid-template-columns: 1fr;
   }
 }
