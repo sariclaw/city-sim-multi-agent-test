@@ -1,27 +1,37 @@
 import {
-  ASSET_ICON_SPRITES,
-  DISTRICT_COMPOSITIONS,
   OPEN_ASSET_FILES,
-  SPRITE_CATALOG,
   WORLD_LAYOUT,
 } from '../config/index.js';
+import { buildDistrictPlacements, placementCellKeys } from './district-placement.js';
 import { createSpriteLibrary } from './sprite-library.js';
 import {
   buildWorldRoadGraph,
   clampZoom,
-  districtIsoFootprint,
   districtScreenFrame,
+  footprintAnchorPoint,
   hasAdjacentRoad,
   isoProject,
   isDistrictCell,
+  cellKeysIsoPolygons,
   screenToIsoGrid,
   isWaterCell,
   pointInPolygon,
   terrainMetrics,
 } from './terrain.js';
+import { buildRectsFromCellKeys, createWorldGeometry } from './world-geometry.js';
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function rectCellKeys(rect) {
+  const cells = [];
+  for (let y = rect.y; y < rect.y + rect.h; y += 1) {
+    for (let x = rect.x; x < rect.x + rect.w; x += 1) {
+      cells.push(`${x},${y}`);
+    }
+  }
+  return cells;
 }
 
 function fillRoundedRect(context, x, y, width, height, radius, fillStyle) {
@@ -151,6 +161,7 @@ function seasonPalette(season) {
 
 export function createMapRenderer({ store, engine }) {
   const worldRoads = buildWorldRoadGraph(WORLD_LAYOUT);
+  const worldGeometry = createWorldGeometry(WORLD_LAYOUT, worldRoads);
   const spriteLibrary = createSpriteLibrary(OPEN_ASSET_FILES, {
     onReady: () => paint(),
   });
@@ -178,15 +189,36 @@ export function createMapRenderer({ store, engine }) {
     const state = getState();
     const systems = state.city.systems;
     const districts = state.city.districts.map((district) => {
-      const isoLayout = WORLD_LAYOUT.districts[district.key] ?? { x: 4, y: 4, w: 2, h: 2, frontage: 'south' };
+      const geometry = worldGeometry.districts[district.key];
+      const territory = geometry?.territory ?? { x: 4, y: 4, w: 2, h: 2 };
+      const placements = buildDistrictPlacements(district, geometry ?? {
+        territory,
+        plots: [territory],
+        buildableCells: new Set(),
+        frontage: 'south',
+      });
+      const surfaceCellKeys = placements.length
+        ? [...new Set(placements.flatMap((placement) => placementCellKeys(placement)))]
+        : geometry?.plots?.flatMap((plot) => rectCellKeys(plot)) ?? rectCellKeys(territory);
+      const surfaceRects = buildRectsFromCellKeys(surfaceCellKeys);
+
       return {
         ...district,
-        ...isoLayout,
+        territory,
+        plots: geometry?.plots ?? [territory],
+        surfaceCellKeys,
+        surfaceRects,
+        frontage: geometry?.frontage ?? 'south',
+        accessPoint: geometry?.accessPoint ?? { x: territory.x + territory.w * 0.5, y: territory.y + territory.h },
+        labelCenter: geometry?.labelCenter ?? { x: territory.x + territory.w * 0.5, y: territory.y + territory.h * 0.5 },
+        placements,
         intensity: clamp(Math.round(2 + district.development * 5 + district.condition * 2), 2, 9),
         utilityTone: district.metrics.utilityLoad <= 0.95 ? 'good' : district.metrics.utilityLoad <= 1.1 ? 'warn' : 'danger',
         growthTone: district.growthTrend > 1 ? 'good' : district.growthTrend > -0.4 ? 'warn' : 'danger',
       };
-    }).sort((left, right) => (left.y + left.h) - (right.y + right.h));
+    }).sort((left, right) => (
+      (left.territory.y + left.territory.h) - (right.territory.y + right.territory.h)
+    ));
 
     return {
       palette: seasonPalette(engine.currentSeason()),
@@ -218,7 +250,11 @@ export function createMapRenderer({ store, engine }) {
       for (let col = 0; col < metrics.cols; col += 1) {
         const point = isoProject(col, row, metrics.originX, metrics.originY, metrics.tileWidth, metrics.tileHeight);
         const water = isWaterCell(col, row, WORLD_LAYOUT);
-        const urbanBand = col > 8 && col < 22 && row > 6 && row < 19;
+        const urbanBand =
+          col >= WORLD_LAYOUT.waterCols + 3
+          && col <= WORLD_LAYOUT.cols - 6
+          && row >= Math.floor(WORLD_LAYOUT.rows * 0.18)
+          && row <= WORLD_LAYOUT.rows - 6;
         const roadAdjacency = hasAdjacentRoad(col, row, worldRoads);
         const fill = water
           ? `rgba(72, ${134 + row * 2}, ${170 + col * 2}, 0.94)`
@@ -261,33 +297,119 @@ export function createMapRenderer({ store, engine }) {
     context.globalAlpha = 1;
   }
 
+  function offsetPoint(point, vector, scale) {
+    return {
+      x: point.x + vector.x * scale,
+      y: point.y + vector.y * scale,
+    };
+  }
+
+  function roadConnections(cell) {
+    return {
+      east: worldRoads.cellMap.has(`${cell.x + 1},${cell.y}`),
+      west: worldRoads.cellMap.has(`${cell.x - 1},${cell.y}`),
+      north: worldRoads.cellMap.has(`${cell.x},${cell.y - 1}`),
+      south: worldRoads.cellMap.has(`${cell.x},${cell.y + 1}`),
+    };
+  }
+
+  function drawRoadStrip(
+    context,
+    center,
+    axisVector,
+    crossVector,
+    axisHalf,
+    crossCenter,
+    crossHalf,
+    fillStyle,
+    strokeStyle = 'transparent',
+    lineWidth = 1,
+  ) {
+    const shiftedCenter = offsetPoint(center, crossVector, crossCenter);
+    const points = [
+      offsetPoint(offsetPoint(shiftedCenter, axisVector, -axisHalf), crossVector, -crossHalf),
+      offsetPoint(offsetPoint(shiftedCenter, axisVector, axisHalf), crossVector, -crossHalf),
+      offsetPoint(offsetPoint(shiftedCenter, axisVector, axisHalf), crossVector, crossHalf),
+      offsetPoint(offsetPoint(shiftedCenter, axisVector, -axisHalf), crossVector, crossHalf),
+    ];
+    drawIsoPolygon(context, points, fillStyle, strokeStyle, lineWidth);
+  }
+
+  function drawRoadMark(context, center, axisVector, crossVector, axisHalf, crossCenter, strokeStyle) {
+    const start = offsetPoint(offsetPoint(center, crossVector, crossCenter), axisVector, -axisHalf + 0.15);
+    const end = offsetPoint(offsetPoint(center, crossVector, crossCenter), axisVector, axisHalf - 0.15);
+    context.strokeStyle = strokeStyle;
+    context.lineWidth = 1;
+    context.beginPath();
+    context.moveTo(start.x, start.y);
+    context.lineTo(end.x, end.y);
+    context.stroke();
+  }
+
   function drawRoadCell(context, cell, metrics) {
     const point = isoProject(cell.x, cell.y, metrics.originX, metrics.originY, metrics.tileWidth, metrics.tileHeight);
-    const roadWidth = metrics.tileWidth * (cell.type === 'avenue' ? 0.94 : 0.76);
-    const roadHeight = metrics.tileHeight * (cell.type === 'avenue' ? 0.94 : 0.76);
+    const rowAxis = { x: metrics.tileWidth * 0.5, y: metrics.tileHeight * 0.5 };
+    const colAxis = { x: -metrics.tileWidth * 0.5, y: metrics.tileHeight * 0.5 };
+    const connections = roadConnections(cell);
+    const rowFlow = connections.east || connections.west;
+    const colFlow = connections.north || connections.south;
+    const avenue = cell.type === 'avenue';
+
+    if (rowFlow && colFlow) {
+      drawIsoDiamond(
+        context,
+        point.x,
+        point.y,
+        metrics.tileWidth * (avenue ? 0.9 : 0.68),
+        metrics.tileHeight * (avenue ? 0.9 : 0.68),
+        avenue ? 'rgba(18, 24, 30, 0.9)' : 'rgba(24, 30, 36, 0.88)',
+        'rgba(255,255,255,0.05)',
+        1,
+      );
+      if (avenue) {
+        drawIsoDiamond(
+          context,
+          point.x,
+          point.y,
+          metrics.tileWidth * 0.28,
+          metrics.tileHeight * 0.28,
+          'rgba(50, 58, 66, 0.72)',
+        );
+      }
+      return;
+    }
+
+    const axisVector = rowFlow ? rowAxis : colAxis;
+    const crossVector = rowFlow ? colAxis : rowAxis;
+
+    if (avenue) {
+      drawIsoDiamond(
+        context,
+        point.x,
+        point.y,
+        metrics.tileWidth * 0.9,
+        metrics.tileHeight * 0.9,
+        'rgba(18, 24, 30, 0.9)',
+        'rgba(255,255,255,0.05)',
+        1,
+      );
+      drawRoadMark(context, point, axisVector, crossVector, 0.48, -0.14, 'rgba(255, 214, 150, 0.16)');
+      drawRoadMark(context, point, axisVector, crossVector, 0.48, 0.14, 'rgba(255, 214, 150, 0.16)');
+      drawRoadMark(context, point, axisVector, crossVector, 0.48, 0, 'rgba(65, 74, 82, 0.5)');
+      return;
+    }
+
     drawIsoDiamond(
       context,
       point.x,
       point.y,
-      roadWidth,
-      roadHeight,
-      cell.type === 'avenue' ? 'rgba(22, 28, 34, 0.98)' : 'rgba(28, 34, 39, 0.94)',
-      'rgba(255,255,255,0.06)',
+      metrics.tileWidth * 0.58,
+      metrics.tileHeight * 0.58,
+      'rgba(28, 33, 38, 0.92)',
+      'rgba(255,255,255,0.04)',
       1,
     );
-
-    context.strokeStyle = 'rgba(255, 220, 155, 0.34)';
-    context.lineWidth = 1;
-    context.beginPath();
-    context.moveTo(point.x - roadWidth * 0.22, point.y);
-    context.lineTo(point.x + roadWidth * 0.22, point.y);
-    context.stroke();
-  }
-
-  function drawIsoRoads(context, metrics) {
-    worldRoads.cells
-      .sort((left, right) => (left.x + left.y) - (right.x + right.y))
-      .forEach((cell) => drawRoadCell(context, cell, metrics));
+    drawRoadMark(context, point, axisVector, crossVector, 0.44, 0, 'rgba(255, 214, 150, 0.2)');
   }
 
   function drawWaterfront(context, palette, metrics) {
@@ -310,7 +432,7 @@ export function createMapRenderer({ store, engine }) {
     }
   }
 
-  function drawDistrictGround(context, district, frame, hit, selection, hovered) {
+  function drawDistrictGround(context, district, polygon, selection, hovered) {
     const [fill] = districtColor(district.type);
     const accent = districtAccent(district.type);
     const fillAlpha =
@@ -323,83 +445,21 @@ export function createMapRenderer({ store, engine }) {
       : 0.2;
     drawIsoPolygon(
       context,
-      hit.points,
+      polygon,
       `${fill}${Math.round(fillAlpha * 255).toString(16).padStart(2, '0')}`,
       `${accent}${Math.round(strokeAlpha * 255).toString(16).padStart(2, '0')}`,
       selection ? 3 : hovered ? 2 : 1.2,
     );
-
-    context.strokeStyle = 'rgba(255,255,255,0.06)';
-    context.lineWidth = 1;
-    context.beginPath();
-    context.moveTo(hit.points[0].x, hit.points[0].y);
-    context.lineTo(hit.points[2].x, hit.points[2].y);
-    context.moveTo(hit.points[1].x, hit.points[1].y);
-    context.lineTo(hit.points[3].x, hit.points[3].y);
-    context.stroke();
-
-    if (district.type === 'park') {
-      drawIsoDiamond(
-        context,
-        frame.center.x,
-        frame.center.y,
-        frame.w * 0.38,
-        frame.h * 0.38,
-        'rgba(122, 182, 110, 0.42)',
-        'rgba(200,255,200,0.18)',
-      );
-    }
   }
 
-  function districtLots(district, count) {
-    if (district.type === 'park') {
-      return [
-        { x: district.x + 1.1, y: district.y + 0.9, width: 0.74, maxHeight: 2.4, depth: 0.08 },
-        { x: district.x + district.w - 1.1, y: district.y + 1.0, width: 0.72, maxHeight: 2.3, depth: 0.1 },
-        { x: district.x + district.w * 0.5, y: district.y + district.h - 0.9, width: 0.78, maxHeight: 2.2, depth: 0.2 },
-      ].slice(0, count);
-    }
-
-    const frontage = WORLD_LAYOUT.districts[district.key]?.frontage ?? 'south';
-    const templates = {
-      south: [
-        { x: 0.22, y: 0.2, width: 1.02, maxHeight: 5.2, depth: 0.08 },
-        { x: 0.5, y: 0.12, width: 1.12, maxHeight: 5.8, depth: 0.06 },
-        { x: 0.8, y: 0.26, width: 1.02, maxHeight: 5.1, depth: 0.1 },
-        { x: 0.34, y: 0.7, width: 0.84, maxHeight: 4.1, depth: 0.2 },
-        { x: 0.7, y: 0.78, width: 0.84, maxHeight: 3.9, depth: 0.22 },
-      ],
-      north: [
-        { x: 0.2, y: 0.74, width: 1.02, maxHeight: 5.0, depth: 0.08 },
-        { x: 0.5, y: 0.82, width: 1.08, maxHeight: 5.6, depth: 0.06 },
-        { x: 0.8, y: 0.7, width: 1.0, maxHeight: 5.0, depth: 0.1 },
-        { x: 0.32, y: 0.34, width: 0.82, maxHeight: 3.9, depth: 0.18 },
-        { x: 0.68, y: 0.26, width: 0.82, maxHeight: 3.9, depth: 0.2 },
-      ],
-      west: [
-        { x: 0.76, y: 0.18, width: 0.96, maxHeight: 5.2, depth: 0.08 },
-        { x: 0.84, y: 0.5, width: 1.04, maxHeight: 5.6, depth: 0.06 },
-        { x: 0.74, y: 0.82, width: 0.96, maxHeight: 5.0, depth: 0.1 },
-        { x: 0.28, y: 0.34, width: 0.82, maxHeight: 4.0, depth: 0.18 },
-        { x: 0.2, y: 0.7, width: 0.82, maxHeight: 3.9, depth: 0.2 },
-      ],
-      east: [
-        { x: 0.24, y: 0.16, width: 0.96, maxHeight: 5.0, depth: 0.08 },
-        { x: 0.14, y: 0.5, width: 1.02, maxHeight: 5.5, depth: 0.06 },
-        { x: 0.24, y: 0.82, width: 0.96, maxHeight: 5.0, depth: 0.1 },
-        { x: 0.72, y: 0.3, width: 0.82, maxHeight: 3.9, depth: 0.18 },
-        { x: 0.8, y: 0.68, width: 0.82, maxHeight: 3.8, depth: 0.2 },
-      ],
-    };
-    const chosen = templates[frontage] ?? templates.south;
-
-    return chosen.slice(0, count).map((template) => ({
-      x: district.x + 0.45 + Math.max(0, district.w - 0.9) * template.x,
-      y: district.y + 0.45 + Math.max(0, district.h - 0.9) * template.y,
-      width: template.width,
-      maxHeight: template.maxHeight,
-      depth: template.depth,
-    }));
+  function drawPlacementPad(context, polygon) {
+    drawIsoPolygon(
+      context,
+      polygon,
+      'rgba(5, 9, 12, 0.05)',
+      'rgba(255,255,255,0.03)',
+      0.8,
+    );
   }
 
   function drawDistrictFallback(context, district, frame) {
@@ -421,213 +481,165 @@ export function createMapRenderer({ store, engine }) {
     }
   }
 
-  function drawDistrictSprites(context, district, frame, metrics) {
-    const spriteDefs = DISTRICT_COMPOSITIONS[district.type] ?? DISTRICT_COMPOSITIONS.mixed;
-
-    if (!spriteLibrary.ready || spriteLibrary.failed) {
-      drawDistrictFallback(context, district, frame);
-      return;
-    }
-
-    const lots = districtLots(district, spriteDefs.length);
-    const placements = spriteDefs
-      .map((entry, index) => {
-        const sprite = SPRITE_CATALOG[entry.spriteId];
-        const lot = lots[index];
-        if (!sprite || !lot) return null;
-
-        const image = spriteLibrary.getImage(sprite.sheet);
-        if (!image) return null;
-
-        const source = spriteLibrary.getTrimmedAbsoluteRect(image, sprite.sourceRectPx);
-        const aspectRatio = source.sh / Math.max(1, source.sw);
-        const sizeFactor =
-          sprite.sizeClass === 'tower' ? 1.34
-          : sprite.sizeClass === 'hall' ? 1.18
-          : sprite.sizeClass === 'small' ? 0.78
-          : 0.98;
-        const scaleBoost = (entry.scale ?? 1) * sprite.baseScale * sizeFactor * (0.92 + district.development * 0.14);
-        let dw = metrics.tileWidth * lot.width * scaleBoost * sprite.visualWeight;
-        let dh = dw * aspectRatio;
-        const maxHeight = metrics.tileHeight * lot.maxHeight * (0.88 + district.condition * 0.16);
-        if (dh > maxHeight) {
-          dh = maxHeight;
-          dw = dh / Math.max(0.1, aspectRatio);
-        }
-        const point = isoProject(lot.x, lot.y, metrics.originX, metrics.originY, metrics.tileWidth, metrics.tileHeight);
-
-        return {
-          image,
-          sourceRectPx: sprite.sourceRectPx,
-          x: point.x,
-          baseY: point.y + metrics.tileHeight * 0.16,
-          dw,
-          dh,
-          depth: lot.depth + lot.y,
-        };
-      })
-      .filter(Boolean)
-      .sort((left, right) => left.depth - right.depth);
-
-    if (!placements.length) {
-      drawDistrictFallback(context, district, frame);
-      return;
-    }
-
-    placements.forEach((placement) => {
-      context.fillStyle = 'rgba(5, 9, 12, 0.18)';
-      context.beginPath();
-      context.ellipse(
-        placement.x,
-        placement.baseY + metrics.tileHeight * 0.22,
-        placement.dw * 0.34,
-        metrics.tileHeight * 0.3,
-        0,
-        0,
-        Math.PI * 2,
-      );
-      context.fill();
-      spriteLibrary.drawSpriteCutout(
-        context,
-        placement.image,
-        placement.sourceRectPx,
-        placement.x - placement.dw * 0.5,
-        placement.baseY - placement.dh,
-        placement.dw,
-        placement.dh,
-        0.98,
-      );
-    });
+  function footprintPolygons(placement, metrics) {
+    return cellKeysIsoPolygons(placementCellKeys(placement), metrics);
   }
 
-  function drawDistrict(context, district, width, metrics) {
-    const frame = districtIsoFootprint(district, metrics);
+  function districtFrame(district, metrics) {
     const hit = districtScreenFrame(district, metrics);
-    const accent = districtAccent(district.type);
-    const selection = selectionMatches('district', district.key);
-    const hovered = hoverMatches('district', district.key);
+    const labelPoint = {
+      x: hit.center.x,
+      y: hit.y + hit.h + metrics.tileHeight * 0.6,
+    };
+    return {
+      ...hit,
+      labelPoint,
+      center: hit.center,
+    };
+  }
 
-    drawDistrictGround(context, district, {
-      center: { x: frame.centerX, y: frame.centerY },
-      w: frame.width,
-      h: frame.height,
-    }, hit, selection, hovered);
-    drawDistrictSprites(context, district, {
-      center: { x: frame.centerX, y: frame.centerY },
-      w: frame.width,
-      h: frame.height,
-    }, metrics);
+  function drawDistrictLabel(context, district, width, metrics) {
+    const frame = districtFrame(district, metrics);
+    const accent = districtAccent(district.type);
+    const labelWidth = Math.max(frame.w * 0.3, 92);
+    const labelHeight = 36;
+    const labelY = frame.labelPoint.y - labelHeight * 0.5;
 
     context.fillStyle = 'rgba(7, 12, 16, 0.72)';
     fillRoundedRect(
       context,
-      frame.centerX - frame.width * 0.16,
-      frame.centerY + frame.height * 0.21,
-      frame.width * 0.32,
-      22,
+      frame.labelPoint.x - labelWidth * 0.5,
+      labelY,
+      labelWidth,
+      labelHeight,
       999,
       context.fillStyle,
     );
+
     context.fillStyle = accent;
     context.font = `700 ${Math.max(9, width * 0.009)}px "Trebuchet MS", sans-serif`;
     context.textAlign = 'center';
-    context.fillText(district.label, frame.centerX, frame.centerY + frame.height * 0.37);
+    context.fillText(district.label, frame.labelPoint.x, labelY + 14);
     context.font = `600 ${Math.max(8, width * 0.0075)}px "Trebuchet MS", sans-serif`;
     context.fillStyle = district.utilityTone === 'good' ? '#9ee2ad' : district.utilityTone === 'warn' ? '#ffd37f' : '#ff9f91';
-    context.fillText(district.status, frame.centerX, frame.centerY + frame.height * 0.48);
+    context.fillText(district.status, frame.labelPoint.x, labelY + 28);
     context.textAlign = 'left';
 
     interactiveTargets.push({
       kind: 'district',
       key: district.key,
-      x: hit.x - 8,
-      y: hit.y - 16,
-      w: hit.w + 16,
-      h: hit.h + frame.height * 1.8,
-      points: hit.points,
+      x: frame.x - 8,
+      y: frame.y - 16,
+      w: frame.w + 16,
+      h: frame.h + labelHeight + metrics.tileHeight,
+      polygons: frame.polygons,
       labelRect: {
-        x: frame.centerX - frame.width * 0.16,
-        y: frame.centerY + frame.height * 0.21,
-        w: frame.width * 0.32,
-        h: 22,
+        x: frame.labelPoint.x - labelWidth * 0.5,
+        y: labelY,
+        w: labelWidth,
+        h: labelHeight,
       },
     });
   }
 
-  function assetAnchor(district, index = 0) {
-    const lots = districtLots(district, 2);
-    const lot = lots[index % Math.max(1, lots.length)] ?? {
-      x: district.x + district.w * 0.5,
-      y: district.y + district.h * 0.5,
-    };
-    return {
-      x: lot.x + (index === 0 ? -0.15 : 0.18),
-      y: lot.y + 0.38,
-    };
+  function buildRoadSceneNodes(metrics) {
+    return worldRoads.cells.map((cell) => {
+      const point = isoProject(cell.x, cell.y, metrics.originX, metrics.originY, metrics.tileWidth, metrics.tileHeight);
+      return {
+        layer: 1,
+        sortY: point.y,
+        draw(context) {
+          drawRoadCell(context, cell, metrics);
+        },
+      };
+    });
   }
 
-  function drawAssetMarker(context, asset, district, metrics, width, index) {
-    const anchor = assetAnchor(district, index);
-    const point = isoProject(anchor.x, anchor.y, metrics.originX, metrics.originY, metrics.tileWidth, metrics.tileHeight);
-    const x = point.x;
-    const y = point.y - metrics.tileHeight * 0.12;
-    const radius = Math.max(14, width * 0.013);
-    const selected = selectionMatches('asset', asset.key);
-    const hovered = hoverMatches('asset', asset.key);
-    const tone = engine.assetActionKey(asset);
-    const districtGlow = districtAccent(district.type);
-    const fill =
-      tone === 'housing' ? 'rgba(152, 226, 166, 0.9)'
-      : tone === 'grid' ? 'rgba(117, 214, 255, 0.88)'
-      : tone === 'industry' ? 'rgba(255, 213, 138, 0.88)'
-      : 'rgba(234, 241, 255, 0.88)';
+  function buildDistrictSceneNodes(viewModel, metrics) {
+    return viewModel.districts.flatMap((district) => {
+      const selection = selectionMatches('district', district.key);
+      const hovered = hoverMatches('district', district.key);
+      const frame = districtFrame(district, metrics);
+      return frame.polygons.map((polygon) => {
+        const sortY = Math.max(...polygon.map((point) => point.y));
+        return {
+          layer: 0,
+          sortY,
+          draw(context) {
+            drawDistrictGround(context, district, polygon, selection, hovered);
+          },
+        };
+      });
+    });
+  }
 
-    context.strokeStyle = `${districtGlow}55`;
-    context.lineWidth = 2;
-    context.beginPath();
-    context.moveTo(x, y - radius * 1.25);
-    context.lineTo(x, y - radius * 0.15);
-    context.stroke();
-
-    context.save();
-    context.translate(x, y);
-    context.rotate(Math.PI / 4);
-    context.fillStyle = 'rgba(5, 10, 15, 0.92)';
-    fillRoundedRect(context, -radius - 5, -radius - 5, (radius + 5) * 2, (radius + 5) * 2, 7, context.fillStyle);
-    context.fillStyle = fill;
-    fillRoundedRect(context, -radius, -radius, radius * 2, radius * 2, 6, context.fillStyle);
-    context.restore();
-
-    const icon = ASSET_ICON_SPRITES[asset.key];
-    const iconImage = icon ? spriteLibrary.getImage(icon.sheet) : null;
-    if (icon && iconImage) {
-      spriteLibrary.drawSpriteRegion(
-        context,
-        iconImage,
-        icon.region,
-        x - radius * 0.72,
-        y - radius * 0.92,
-        radius * 1.44,
-        radius * 1.25,
-        0.98,
-      );
+  function buildSpriteSceneNodes(viewModel, metrics) {
+    if (!spriteLibrary.ready || spriteLibrary.failed) {
+      return viewModel.districts.map((district) => {
+        const frame = districtFrame(district, metrics);
+        return {
+          layer: 2,
+          sortY: frame.center.y,
+          draw(context) {
+            drawDistrictFallback(context, district, {
+              center: frame.center,
+              w: frame.w,
+              h: frame.h,
+            });
+          },
+        };
+      });
     }
 
-    if (selected || hovered) {
-      context.strokeStyle = selected ? districtGlow : 'rgba(255, 255, 255, 0.72)';
-      context.lineWidth = selected ? 3 : 2;
-      context.beginPath();
-      context.arc(x, y, radius + 6, 0, Math.PI * 2);
-      context.stroke();
-    }
+    return viewModel.districts.flatMap((district) => district.placements.flatMap((placement) => {
+      const image = spriteLibrary.getImage(placement.sprite.sheet);
+      if (!image) return [];
 
-    context.fillStyle = '#02131b';
-    context.font = `700 ${Math.max(10, width * 0.01)}px "Trebuchet MS", sans-serif`;
-    context.textAlign = 'center';
-    context.fillText(`L${asset.level}`, x, y + radius * 1.02);
-    context.textAlign = 'left';
+      const source = spriteLibrary.getTrimmedAbsoluteRect(image, placement.sprite.sourceRectPx);
+      const aspectRatio = source.sh / Math.max(1, source.sw);
+      const footprintSpan = ((placement.footprint.w + placement.footprint.h) * 0.5) || 1;
+      const support = footprintAnchorPoint(placement.footprint, metrics);
+      const scaleBoost = (placement.entry.scale ?? 1) * placement.sprite.drawScale * (0.94 + district.development * 0.08);
+      const dw = metrics.tileWidth * footprintSpan * scaleBoost;
+      const dh = dw * aspectRatio;
+      const padPolygons = footprintPolygons(placement, metrics);
+      const baseY = support.y;
 
-    interactiveTargets.push({ kind: 'asset', key: asset.key, x: x - radius - 8, y: y - radius - 8, w: (radius + 8) * 2, h: (radius + 8) * 2 });
+      return [
+        {
+          layer: 2,
+          sortY: baseY,
+          draw(context) {
+            padPolygons.forEach((polygon) => drawPlacementPad(context, polygon));
+          },
+        },
+        {
+          layer: 3,
+          sortY: baseY,
+          draw(context) {
+            spriteLibrary.drawSpriteCutout(
+              context,
+              image,
+              placement.sprite.sourceRectPx,
+              support.x - dw * placement.sprite.anchor.x,
+              baseY - dh * placement.sprite.anchor.y,
+              dw,
+              dh,
+              0.98,
+            );
+          },
+        },
+      ];
+    }));
+  }
+
+  function drawSceneNodes(context, nodes) {
+    nodes
+      .sort((left, right) => {
+        if (left.sortY !== right.sortY) return left.sortY - right.sortY;
+        return left.layer - right.layer;
+      })
+      .forEach((node) => node.draw(context));
   }
 
   function drawBackdropCity(context, width, height, palette) {
@@ -680,12 +692,12 @@ export function createMapRenderer({ store, engine }) {
     drawBackdropCity(context, width, height, palette);
     drawTerrainBase(context, width, height, palette, metrics);
     drawWaterfront(context, palette, metrics);
-    drawIsoRoads(context, metrics);
-    districts.forEach((district) => drawDistrict(context, district, width, metrics));
-    districts.forEach((district) => {
-      const districtAssets = state.city.assets.filter((asset) => asset.districtKey === district.key);
-      districtAssets.forEach((asset, index) => drawAssetMarker(context, asset, district, metrics, width, index));
-    });
+    drawSceneNodes(context, [
+      ...buildDistrictSceneNodes(viewModel, metrics),
+      ...buildRoadSceneNodes(metrics),
+      ...buildSpriteSceneNodes(viewModel, metrics),
+    ]);
+    districts.forEach((district) => drawDistrictLabel(context, district, width, metrics));
     drawForegroundCanopy(context, width, height);
   }
 
@@ -799,13 +811,13 @@ export function createMapRenderer({ store, engine }) {
         && point.y >= target.y
         && point.y <= target.y + target.h;
       if (!withinRect) return false;
-      if (target.points) {
+      if (target.polygons?.length) {
         const onLabel = target.labelRect
           && point.x >= target.labelRect.x
           && point.x <= target.labelRect.x + target.labelRect.w
           && point.y >= target.labelRect.y
           && point.y <= target.labelRect.y + target.labelRect.h;
-        return pointInPolygon(point, target.points) || onLabel;
+        return target.polygons.some((polygon) => pointInPolygon(point, polygon)) || onLabel;
       }
       return true;
     }) ?? null;

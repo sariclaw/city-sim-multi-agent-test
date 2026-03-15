@@ -18,8 +18,26 @@ export function clampZoom(zoom = MAP_ZOOM_DEFAULT) {
   );
 }
 
-function roadCellKey(x, y) {
+export function roadCellKey(x, y) {
   return `${x},${y}`;
+}
+
+export function districtTerritory(layout) {
+  if (layout?.territory) {
+    return {
+      x: layout.territory.x,
+      y: layout.territory.y,
+      w: layout.territory.w,
+      h: layout.territory.h,
+    };
+  }
+
+  return {
+    x: layout?.x ?? 0,
+    y: layout?.y ?? 0,
+    w: layout?.w ?? 0,
+    h: layout?.h ?? 0,
+  };
 }
 
 function addRoadCell(roadMap, x, y, type = 'street', worldLayout = WORLD_LAYOUT) {
@@ -49,17 +67,18 @@ function addRoadPath(roadMap, start, end, type = 'street', worldLayout = WORLD_L
   }
 }
 
-function districtAccessPoint(layout) {
+export function districtAccessPoint(layout) {
+  const territory = districtTerritory(layout);
   switch (layout.frontage) {
     case 'north':
-      return { x: Math.round(layout.x + layout.w * 0.5), y: layout.y - 1 };
+      return { x: Math.round(territory.x + territory.w * 0.5), y: territory.y - 1 };
     case 'east':
-      return { x: layout.x + layout.w + 1, y: Math.round(layout.y + layout.h * 0.5) };
+      return { x: territory.x + territory.w, y: Math.round(territory.y + territory.h * 0.5) };
     case 'west':
-      return { x: layout.x - 1, y: Math.round(layout.y + layout.h * 0.5) };
+      return { x: territory.x - 1, y: Math.round(territory.y + territory.h * 0.5) };
     case 'south':
     default:
-      return { x: Math.round(layout.x + layout.w * 0.5), y: layout.y + layout.h + 1 };
+      return { x: Math.round(territory.x + territory.w * 0.5), y: territory.y + territory.h };
   }
 }
 
@@ -103,8 +122,9 @@ export function buildWorldRoadGraph(worldLayout = WORLD_LAYOUT) {
     addRoadPath(roadMap, accessPoint, avenueTarget, 'street', worldLayout);
   });
 
-  addRoadPath(roadMap, { x: 11, y: 9 }, { x: 16, y: 9 }, 'street', worldLayout);
-  addRoadPath(roadMap, { x: 10, y: 15 }, { x: 18, y: 15 }, 'street', worldLayout);
+  (worldLayout.connectorStreets ?? []).forEach((street) => {
+    addRoadPath(roadMap, street.start, street.end, street.type ?? 'street', worldLayout);
+  });
 
   return {
     cells: [...roadMap.values()],
@@ -121,12 +141,15 @@ export function isRoadCell(col, row, worldRoads) {
 }
 
 export function isDistrictCell(col, row, worldLayout = WORLD_LAYOUT) {
-  return Object.values(worldLayout.districts).some((layout) => (
-    col >= layout.x
-    && col < layout.x + layout.w
-    && row >= layout.y
-    && row < layout.y + layout.h
-  ));
+  return Object.values(worldLayout.districts).some((layout) => {
+    const territory = districtTerritory(layout);
+    return (
+      col >= territory.x
+      && col < territory.x + territory.w
+      && row >= territory.y
+      && row < territory.y + territory.h
+    );
+  });
 }
 
 export function hasAdjacentRoad(col, row, worldRoads) {
@@ -244,43 +267,232 @@ export function terrainMetrics(
 }
 
 export function pointInPolygon(point, points) {
-  let inside = false;
-  for (let current = 0, previous = points.length - 1; current < points.length; previous = current, current += 1) {
-    const a = points[current];
-    const b = points[previous];
-    const intersects =
-      ((a.y > point.y) !== (b.y > point.y))
-      && (point.x < ((b.x - a.x) * (point.y - a.y)) / Math.max(0.0001, (b.y - a.y)) + a.x);
-    if (intersects) inside = !inside;
+  function pointOnSegment(a, b) {
+    const cross = (point.y - a.y) * (b.x - a.x) - (point.x - a.x) * (b.y - a.y);
+    if (Math.abs(cross) > 0.01) return false;
+
+    return (
+      point.x >= Math.min(a.x, b.x) - 0.01
+      && point.x <= Math.max(a.x, b.x) + 0.01
+      && point.y >= Math.min(a.y, b.y) - 0.01
+      && point.y <= Math.max(a.y, b.y) + 0.01
+    );
   }
-  return inside;
+
+  function isLeft(a, b) {
+    return (b.x - a.x) * (point.y - a.y) - (point.x - a.x) * (b.y - a.y);
+  }
+
+  let winding = 0;
+  for (let current = 0, previous = points.length - 1; current < points.length; previous = current, current += 1) {
+    const a = points[previous];
+    const b = points[current];
+
+    if (pointOnSegment(a, b)) return true;
+
+    if (a.y <= point.y) {
+      if (b.y > point.y && isLeft(a, b) > 0) winding += 1;
+    } else if (b.y <= point.y && isLeft(a, b) < 0) {
+      winding -= 1;
+    }
+  }
+  return winding !== 0;
 }
 
-export function districtIsoFootprint(district, metrics) {
-  const center = isoProject(
-    district.x + district.w * 0.5,
-    district.y + district.h * 0.5,
+function rectCellKeys(rect) {
+  const territory = districtTerritory(rect);
+  const cells = [];
+  for (let y = territory.y; y < territory.y + territory.h; y += 1) {
+    for (let x = territory.x; x < territory.x + territory.w; x += 1) {
+      cells.push(roadCellKey(x, y));
+    }
+  }
+  return cells;
+}
+
+function parseCellKey(key) {
+  const [x, y] = key.split(',').map(Number);
+  return { x, y, key: roadCellKey(x, y) };
+}
+
+function screenPointKey(point) {
+  return `${Math.round(point.x * 1000)}:${Math.round(point.y * 1000)}`;
+}
+
+function simplifyPolygon(points) {
+  if (points.length <= 3) return points;
+
+  return points.filter((point, index) => {
+    const previous = points[(index + points.length - 1) % points.length];
+    const next = points[(index + 1) % points.length];
+    const cross =
+      (point.x - previous.x) * (next.y - point.y)
+      - (point.y - previous.y) * (next.x - point.x);
+    return Math.abs(cross) > 0.01;
+  });
+}
+
+function componentCellKeys(cellKeys) {
+  const pending = new Set(cellKeys);
+  const components = [];
+
+  while (pending.size) {
+    const seedKey = pending.values().next().value;
+    const stack = [seedKey];
+    const component = [];
+    pending.delete(seedKey);
+
+    while (stack.length) {
+      const key = stack.pop();
+      const cell = parseCellKey(key);
+      component.push(cell);
+
+      [
+        roadCellKey(cell.x + 1, cell.y),
+        roadCellKey(cell.x - 1, cell.y),
+        roadCellKey(cell.x, cell.y + 1),
+        roadCellKey(cell.x, cell.y - 1),
+      ].forEach((neighborKey) => {
+        if (!pending.has(neighborKey)) return;
+        pending.delete(neighborKey);
+        stack.push(neighborKey);
+      });
+    }
+
+    components.push(component);
+  }
+
+  return components;
+}
+
+function diamondPointsForCell(cell, metrics) {
+  const center = isoProject(cell.x, cell.y, metrics.originX, metrics.originY, metrics.tileWidth, metrics.tileHeight);
+  return [
+    { x: center.x, y: center.y - metrics.tileHeight * 0.5 },
+    { x: center.x + metrics.tileWidth * 0.5, y: center.y },
+    { x: center.x, y: center.y + metrics.tileHeight * 0.5 },
+    { x: center.x - metrics.tileWidth * 0.5, y: center.y },
+  ];
+}
+
+function edgeKey(start, end) {
+  return `${screenPointKey(start)}>${screenPointKey(end)}`;
+}
+
+function traceBoundaryPolygons(boundaryEdges) {
+  const edges = new Map(boundaryEdges);
+  const outgoing = new Map();
+
+  edges.forEach((edge, key) => {
+    const startKey = screenPointKey(edge.start);
+    const list = outgoing.get(startKey) ?? [];
+    list.push(key);
+    outgoing.set(startKey, list);
+  });
+
+  function removeEdge(key) {
+    const edge = edges.get(key);
+    if (!edge) return null;
+    edges.delete(key);
+    const startKey = screenPointKey(edge.start);
+    const list = outgoing.get(startKey) ?? [];
+    const nextList = list.filter((candidate) => candidate !== key);
+    if (nextList.length) outgoing.set(startKey, nextList);
+    else outgoing.delete(startKey);
+    return edge;
+  }
+
+  const polygons = [];
+  while (edges.size) {
+    const [firstKey] = edges.entries().next().value;
+    const firstEdge = removeEdge(firstKey);
+    if (!firstEdge) continue;
+
+    const polygon = [firstEdge.start];
+    const startKey = screenPointKey(firstEdge.start);
+    let cursor = firstEdge.end;
+    let guard = 0;
+
+    while (screenPointKey(cursor) !== startKey && guard < 10000) {
+      polygon.push(cursor);
+      const nextKey = (outgoing.get(screenPointKey(cursor)) ?? []).find((candidate) => edges.has(candidate));
+      if (!nextKey) break;
+      const nextEdge = removeEdge(nextKey);
+      if (!nextEdge) break;
+      cursor = nextEdge.end;
+      guard += 1;
+    }
+
+    const simplified = simplifyPolygon(polygon);
+    if (simplified.length >= 3) polygons.push(simplified);
+  }
+
+  return polygons;
+}
+
+export function cellKeysIsoPolygons(cellKeys, metrics) {
+  const uniqueCellKeys = [...new Set([...cellKeys].filter(Boolean))];
+  if (!uniqueCellKeys.length) return [];
+
+  return componentCellKeys(uniqueCellKeys).flatMap((component) => {
+    const boundaryEdges = new Map();
+
+    component.forEach((cell) => {
+      const diamond = diamondPointsForCell(cell, metrics);
+      for (let index = 0; index < diamond.length; index += 1) {
+        const start = diamond[index];
+        const end = diamond[(index + 1) % diamond.length];
+        const forwardKey = edgeKey(start, end);
+        const reverseKey = edgeKey(end, start);
+        if (boundaryEdges.has(reverseKey)) {
+          boundaryEdges.delete(reverseKey);
+          continue;
+        }
+        boundaryEdges.set(forwardKey, { start, end });
+      }
+    });
+
+    return traceBoundaryPolygons(boundaryEdges);
+  });
+}
+
+export function rectIsoPolygon(rect, metrics) {
+  return cellKeysIsoPolygons(rectCellKeys(rect), metrics)[0] ?? [];
+}
+
+export function footprintAnchorPoint(rect, metrics) {
+  const territory = districtTerritory(rect);
+  const frontCell = isoProject(
+    territory.x + territory.w - 1,
+    territory.y + territory.h - 1,
     metrics.originX,
     metrics.originY,
     metrics.tileWidth,
     metrics.tileHeight,
   );
   return {
-    centerX: center.x,
-    centerY: center.y,
-    width: metrics.tileWidth * (district.w + district.h) * 0.9,
-    height: metrics.tileHeight * (district.w + district.h) * 0.86,
-    tileWidth: metrics.tileWidth * district.w,
-    tileHeight: metrics.tileHeight * district.h,
+    x: frontCell.x,
+    y: frontCell.y + metrics.tileHeight * 0.5,
   };
 }
 
-export function districtScreenFrame(district, metrics) {
-  const top = isoProject(district.x, district.y, metrics.originX, metrics.originY, metrics.tileWidth, metrics.tileHeight);
-  const right = isoProject(district.x + district.w, district.y, metrics.originX, metrics.originY, metrics.tileWidth, metrics.tileHeight);
-  const bottom = isoProject(district.x + district.w, district.y + district.h, metrics.originX, metrics.originY, metrics.tileWidth, metrics.tileHeight);
-  const left = isoProject(district.x, district.y + district.h, metrics.originX, metrics.originY, metrics.tileWidth, metrics.tileHeight);
-  const points = [top, right, bottom, left];
+function districtPolygons(district, metrics) {
+  if (district.surfaceCellKeys?.length) {
+    return cellKeysIsoPolygons(district.surfaceCellKeys, metrics);
+  }
+
+  if (district.cellKeys?.length) {
+    return cellKeysIsoPolygons(district.cellKeys, metrics);
+  }
+
+  const territory = districtTerritory(district);
+  return (district.plots?.length ? district.plots : [territory])
+    .map((plot) => rectIsoPolygon(plot, metrics))
+    .filter((polygon) => polygon.length >= 3);
+}
+
+export function polygonsScreenFrame(polygons) {
+  const points = polygons.flat();
   const minX = Math.min(...points.map((point) => point.x));
   const maxX = Math.max(...points.map((point) => point.x));
   const minY = Math.min(...points.map((point) => point.y));
@@ -290,10 +502,50 @@ export function districtScreenFrame(district, metrics) {
     y: minY,
     w: maxX - minX,
     h: maxY - minY,
-    points,
+    center: {
+      x: minX + (maxX - minX) * 0.5,
+      y: minY + (maxY - minY) * 0.5,
+    },
+  };
+}
+
+export function districtIsoFootprint(district, metrics) {
+  const territory = districtTerritory(district);
+  const polygons = districtPolygons(district, metrics);
+  const frame = polygonsScreenFrame(polygons);
+  const center = isoProject(
+    territory.x + territory.w * 0.5,
+    territory.y + territory.h * 0.5,
+    metrics.originX,
+    metrics.originY,
+    metrics.tileWidth,
+    metrics.tileHeight,
+  );
+  return {
+    centerX: center.x,
+    centerY: center.y,
+    width: frame.w,
+    height: frame.h,
+    tileWidth: metrics.tileWidth * territory.w,
+    tileHeight: metrics.tileHeight * territory.h,
+    polygons,
+  };
+}
+
+export function districtScreenFrame(district, metrics) {
+  const territory = districtTerritory(district);
+  const polygons = districtPolygons(district, metrics);
+  const frame = polygonsScreenFrame(polygons);
+  return {
+    x: frame.x,
+    y: frame.y,
+    w: frame.w,
+    h: frame.h,
+    points: polygons[0] ?? [],
+    polygons,
     center: isoProject(
-      district.x + district.w * 0.5,
-      district.y + district.h * 0.5,
+      territory.x + territory.w * 0.5,
+      territory.y + territory.h * 0.5,
       metrics.originX,
       metrics.originY,
       metrics.tileWidth,

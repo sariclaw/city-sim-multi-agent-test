@@ -1,7 +1,7 @@
 import {
   ACTION_LIMIT,
   ASSET_DEFINITIONS,
-  DISTRICT_LAYOUT,
+  DISTRICT_DEFINITIONS,
   LOG_LIMIT,
   MAP_ZOOM_DEFAULT,
   SPEED_OPTIONS,
@@ -9,7 +9,7 @@ import {
 } from '../config/index.js';
 
 function buildInitialDistricts() {
-  return DISTRICT_LAYOUT.map((district) => ({
+  return DISTRICT_DEFINITIONS.map((district) => ({
     ...district,
     development:
       district.type === 'civic' ? 0.8

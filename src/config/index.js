@@ -4,45 +4,53 @@ export const LOG_LIMIT = 10;
 export const TICKS_PER_SEASON = 6;
 export const MAP_ZOOM_DEFAULT = 1;
 export const MAP_ZOOM_MIN = 0.7;
-export const MAP_ZOOM_MAX = 1.9;
+export const MAP_ZOOM_MAX = 3.2;
 export const SPEED_OPTIONS = [
   { label: '1x', value: 1, tickMs: 1000 },
   { label: '2x', value: 2, tickMs: 550 },
   { label: '4x', value: 4, tickMs: 280 },
 ];
 
-export const DISTRICT_LAYOUT = [
-  { key: 'civic', label: 'Civic Core', type: 'civic', x: 0.355, y: 0.145, w: 0.29, h: 0.22 },
-  { key: 'north', label: 'North Steps', type: 'residential', x: 0.645, y: 0.09, w: 0.225, h: 0.25 },
-  { key: 'harbor', label: 'Rivergate', type: 'utility', x: 0.105, y: 0.16, w: 0.21, h: 0.27 },
-  { key: 'market', label: 'Market Spine', type: 'commercial', x: 0.34, y: 0.395, w: 0.325, h: 0.2 },
-  { key: 'park', label: 'Green Loop', type: 'park', x: 0.105, y: 0.505, w: 0.225, h: 0.25 },
-  { key: 'industry', label: 'Ironworks', type: 'industrial', x: 0.675, y: 0.445, w: 0.2, h: 0.245 },
-  { key: 'south', label: 'South Reach', type: 'mixed', x: 0.355, y: 0.66, w: 0.295, h: 0.19 },
+export const DISTRICT_DEFINITIONS = [
+  { key: 'civic', label: 'Civic Core', type: 'civic' },
+  { key: 'north', label: 'North Steps', type: 'residential' },
+  { key: 'harbor', label: 'Rivergate', type: 'utility' },
+  { key: 'market', label: 'Market Spine', type: 'commercial' },
+  { key: 'park', label: 'Green Loop', type: 'park' },
+  { key: 'industry', label: 'Ironworks', type: 'industrial' },
+  { key: 'south', label: 'South Reach', type: 'mixed' },
 ];
 
+function territory(x, y, w, h) {
+  return { x, y, w, h };
+}
+
 export const WORLD_LAYOUT = {
-  cols: 26,
-  rows: 22,
-  waterCols: 4,
+  cols: 48,
+  rows: 38,
+  waterCols: 9,
   mainAvenues: {
-    rows: [12],
-    cols: [13],
+    rows: [21],
+    cols: [24],
   },
   safeArea: {
-    left: 56,
-    right: 360,
-    top: 92,
-    bottom: 172,
+    left: 64,
+    right: 380,
+    top: 96,
+    bottom: 184,
   },
+  connectorStreets: [
+    { start: { x: 17, y: 22 }, end: { x: 35, y: 22 } },
+    { start: { x: 10, y: 31 }, end: { x: 38, y: 31 } },
+  ],
   districts: {
-    harbor: { x: 5, y: 8, w: 4, h: 3, frontage: 'east' },
-    civic: { x: 10, y: 8, w: 4, h: 3, frontage: 'south' },
-    north: { x: 14, y: 5, w: 4, h: 3, frontage: 'south' },
-    market: { x: 15, y: 10, w: 4, h: 3, frontage: 'west' },
-    park: { x: 8, y: 13, w: 4, h: 3, frontage: 'north' },
-    industry: { x: 17, y: 13, w: 4, h: 3, frontage: 'north' },
-    south: { x: 11, y: 16, w: 5, h: 3, frontage: 'north' },
+    harbor: { territory: territory(10, 11, 8, 6), frontage: 'east' },
+    civic: { territory: territory(26, 13, 8, 7), frontage: 'west' },
+    north: { territory: territory(34, 8, 8, 7), frontage: 'south' },
+    market: { territory: territory(15, 24, 8, 6), frontage: 'east' },
+    park: { territory: territory(6, 24, 8, 7), frontage: 'north' },
+    industry: { territory: territory(29, 24, 10, 7), frontage: 'north' },
+    south: { territory: territory(17, 32, 7, 5), frontage: 'east' },
   },
 };
 
@@ -204,263 +212,324 @@ export const OPEN_ASSET_FILES = {
   roadsB: 'assets/open/streets-and-avenues/spr_road_2_strip29_2.png',
 };
 
+const CLEARANCE_NONE = { front: 0, back: 0, left: 0, right: 0 };
+
+const SPRITE_SIZE_DEFAULTS = {
+  hall: {
+    footprintTiles: { w: 2, h: 2 },
+    anchor: { x: 0.5, y: 1 },
+    clearance: CLEARANCE_NONE,
+    padInset: 0.08,
+    placementPriority: 120,
+    drawScale: 0.94,
+  },
+  tower: {
+    footprintTiles: { w: 2, h: 2 },
+    anchor: { x: 0.5, y: 1 },
+    clearance: CLEARANCE_NONE,
+    padInset: 0.08,
+    placementPriority: 100,
+    drawScale: 0.9,
+  },
+  mid: {
+    footprintTiles: { w: 2, h: 2 },
+    anchor: { x: 0.5, y: 1 },
+    clearance: CLEARANCE_NONE,
+    padInset: 0.08,
+    placementPriority: 80,
+    drawScale: 0.84,
+  },
+  low: {
+    footprintTiles: { w: 2, h: 1 },
+    anchor: { x: 0.5, y: 1 },
+    clearance: CLEARANCE_NONE,
+    padInset: 0.06,
+    placementPriority: 60,
+    drawScale: 0.8,
+  },
+  small: {
+    footprintTiles: { w: 1, h: 1 },
+    anchor: { x: 0.5, y: 1 },
+    clearance: CLEARANCE_NONE,
+    padInset: 0.05,
+    placementPriority: 20,
+    drawScale: 0.62,
+  },
+};
+
+function spriteDefinition(config) {
+  const defaults = SPRITE_SIZE_DEFAULTS[config.sizeClass] ?? SPRITE_SIZE_DEFAULTS.mid;
+  return {
+    ...defaults,
+    ...config,
+    footprintTiles: {
+      ...defaults.footprintTiles,
+      ...(config.footprintTiles ?? {}),
+    },
+    anchor: {
+      ...defaults.anchor,
+      ...(config.anchor ?? {}),
+    },
+    clearance: {
+      ...defaults.clearance,
+      ...(config.clearance ?? {}),
+    },
+  };
+}
+
 export const SPRITE_CATALOG = {
-  'municipal-west-hall': {
+  'municipal-west-hall': spriteDefinition({
     sheet: 'municipal',
     sourceRectPx: [2, 24, 70, 49],
     districtTypes: ['civic'],
-    baseScale: 0.9,
-    visualWeight: 1.08,
     sizeClass: 'hall',
-  },
-  'municipal-east-hall': {
+    drawScale: 0.9,
+    anchor: { x: 0.48 },
+  }),
+  'municipal-east-hall': spriteDefinition({
     sheet: 'municipal',
     sourceRectPx: [166, 19, 70, 54],
     districtTypes: ['civic', 'utility'],
-    baseScale: 0.88,
-    visualWeight: 1.06,
     sizeClass: 'hall',
-  },
-  'municipal-clinic': {
+    drawScale: 0.9,
+    anchor: { x: 0.52 },
+  }),
+  'municipal-clinic': spriteDefinition({
     sheet: 'municipal',
     sourceRectPx: [85, 26, 66, 46],
     districtTypes: ['civic', 'utility'],
-    baseScale: 0.82,
-    visualWeight: 1.02,
     sizeClass: 'mid',
-  },
-  'municipal-service-east': {
+    footprintTiles: { w: 2, h: 1 },
+    drawScale: 0.78,
+  }),
+  'municipal-service-east': spriteDefinition({
     sheet: 'municipal',
     sourceRectPx: [244, 25, 70, 48],
     districtTypes: ['utility'],
-    baseScale: 0.84,
-    visualWeight: 1.02,
     sizeClass: 'mid',
-  },
-  'municipal-kiosk-a': {
+    footprintTiles: { w: 2, h: 1 },
+    drawScale: 0.8,
+    anchor: { x: 0.52 },
+  }),
+  'municipal-kiosk-a': spriteDefinition({
     sheet: 'municipal',
     sourceRectPx: [23, 88, 34, 29],
     districtTypes: ['civic', 'park'],
-    baseScale: 0.92,
-    visualWeight: 0.94,
     sizeClass: 'small',
-  },
-  'municipal-kiosk-b': {
+    drawScale: 0.6,
+  }),
+  'municipal-kiosk-b': spriteDefinition({
     sheet: 'municipal',
     sourceRectPx: [100, 88, 34, 29],
     districtTypes: ['civic', 'park'],
-    baseScale: 0.92,
-    visualWeight: 0.94,
     sizeClass: 'small',
-  },
-  'municipal-kiosk-c': {
+    drawScale: 0.6,
+  }),
+  'municipal-kiosk-c': spriteDefinition({
     sheet: 'municipal',
     sourceRectPx: [185, 89, 34, 29],
     districtTypes: ['park', 'utility'],
-    baseScale: 0.92,
-    visualWeight: 0.94,
     sizeClass: 'small',
-  },
-  'municipal-kiosk-d': {
+    drawScale: 0.6,
+  }),
+  'municipal-kiosk-d': spriteDefinition({
     sheet: 'municipal',
     sourceRectPx: [262, 89, 34, 29],
     districtTypes: ['park', 'utility'],
-    baseScale: 0.92,
-    visualWeight: 0.94,
     sizeClass: 'small',
-  },
-  'municipal-garden-west': {
+    drawScale: 0.6,
+  }),
+  'municipal-garden-west': spriteDefinition({
     sheet: 'municipal',
     sourceRectPx: [80, 137, 34, 29],
     districtTypes: ['park'],
-    baseScale: 0.9,
-    visualWeight: 0.96,
     sizeClass: 'small',
-  },
-  'municipal-garden-east': {
+    drawScale: 0.58,
+  }),
+  'municipal-garden-east': spriteDefinition({
     sheet: 'municipal',
     sourceRectPx: [200, 188, 34, 27],
     districtTypes: ['park', 'civic'],
-    baseScale: 0.9,
-    visualWeight: 0.94,
     sizeClass: 'small',
-  },
-  'city-tower-west': {
+    drawScale: 0.56,
+  }),
+  'city-tower-west': spriteDefinition({
     sheet: 'city',
     sourceRectPx: [127, 224, 34, 66],
     districtTypes: ['commercial', 'mixed', 'industrial'],
-    baseScale: 0.98,
-    visualWeight: 0.8,
     sizeClass: 'tower',
-  },
-  'city-tower-east': {
+    drawScale: 0.92,
+    anchor: { x: 0.48 },
+  }),
+  'city-tower-east': spriteDefinition({
     sheet: 'city',
     sourceRectPx: [177, 225, 34, 65],
     districtTypes: ['commercial', 'mixed'],
-    baseScale: 0.98,
-    visualWeight: 0.8,
     sizeClass: 'tower',
-  },
-  'city-mid-block': {
+    drawScale: 0.92,
+    anchor: { x: 0.52 },
+  }),
+  'city-mid-block': spriteDefinition({
     sheet: 'city',
     sourceRectPx: [57, 228, 52, 63],
     districtTypes: ['commercial', 'mixed'],
-    baseScale: 0.92,
-    visualWeight: 0.96,
     sizeClass: 'mid',
-  },
-  'city-low-block': {
+    drawScale: 0.84,
+  }),
+  'city-low-block': spriteDefinition({
     sheet: 'city',
     sourceRectPx: [242, 270, 52, 32],
     districtTypes: ['commercial', 'utility'],
-    baseScale: 0.94,
-    visualWeight: 1.06,
     sizeClass: 'low',
-  },
-  'city-mid-slim': {
+    drawScale: 0.82,
+  }),
+  'city-mid-slim': spriteDefinition({
     sheet: 'city',
     sourceRectPx: [177, 301, 34, 60],
     districtTypes: ['commercial', 'mixed'],
-    baseScale: 0.94,
-    visualWeight: 0.82,
     sizeClass: 'tower',
-  },
-  'city-mid-office': {
+    drawScale: 0.86,
+  }),
+  'city-mid-office': spriteDefinition({
     sheet: 'city',
     sourceRectPx: [59, 309, 52, 48],
     districtTypes: ['commercial', 'mixed'],
-    baseScale: 0.9,
-    visualWeight: 0.98,
     sizeClass: 'mid',
-  },
-  'city-strip-industrial': {
+    drawScale: 0.82,
+    footprintTiles: { w: 2, h: 1 },
+  }),
+  'city-strip-industrial': spriteDefinition({
     sheet: 'city',
     sourceRectPx: [220, 329, 70, 39],
     districtTypes: ['industrial', 'utility'],
-    baseScale: 0.94,
-    visualWeight: 1.06,
     sizeClass: 'low',
-  },
-  'city-mid-warehouse': {
+    drawScale: 0.86,
+    footprintTiles: { w: 2, h: 1 },
+    placementPriority: 72,
+  }),
+  'city-mid-warehouse': spriteDefinition({
     sheet: 'city',
     sourceRectPx: [10, 369, 52, 56],
     districtTypes: ['industrial', 'utility'],
-    baseScale: 0.9,
-    visualWeight: 0.98,
     sizeClass: 'mid',
-  },
-  'city-slim-warehouse': {
+    drawScale: 0.82,
+    footprintTiles: { w: 2, h: 1 },
+  }),
+  'city-slim-warehouse': spriteDefinition({
     sheet: 'city',
     sourceRectPx: [128, 367, 34, 58],
     districtTypes: ['industrial', 'mixed'],
-    baseScale: 0.92,
-    visualWeight: 0.82,
     sizeClass: 'tower',
-  },
-  'brick-office': {
+    drawScale: 0.84,
+    footprintTiles: { w: 2, h: 1 },
+  }),
+  'brick-office': spriteDefinition({
     sheet: 'brick',
     sourceRectPx: [244, 115, 66, 37],
     districtTypes: ['commercial', 'mixed'],
-    baseScale: 0.9,
-    visualWeight: 1.02,
     sizeClass: 'low',
-  },
-  'brick-mid-west': {
+    drawScale: 0.8,
+    footprintTiles: { w: 2, h: 1 },
+  }),
+  'brick-mid-west': spriteDefinition({
     sheet: 'brick',
     sourceRectPx: [19, 250, 66, 82],
     districtTypes: ['residential', 'mixed'],
-    baseScale: 0.76,
-    visualWeight: 0.98,
     sizeClass: 'tower',
-  },
-  'brick-mid-east': {
+    drawScale: 0.88,
+    anchor: { x: 0.48 },
+  }),
+  'brick-mid-east': spriteDefinition({
     sheet: 'brick',
     sourceRectPx: [231, 249, 66, 79],
     districtTypes: ['residential', 'mixed'],
-    baseScale: 0.76,
-    visualWeight: 0.98,
     sizeClass: 'tower',
-  },
-  'brick-mid-center': {
+    drawScale: 0.88,
+    anchor: { x: 0.52 },
+  }),
+  'brick-mid-center': spriteDefinition({
     sheet: 'brick',
     sourceRectPx: [172, 250, 38, 66],
     districtTypes: ['residential', 'mixed'],
-    baseScale: 0.84,
-    visualWeight: 0.84,
     sizeClass: 'tower',
-  },
-  'brick-plant-west': {
+    drawScale: 0.82,
+    footprintTiles: { w: 1, h: 1 },
+    placementPriority: 92,
+  }),
+  'brick-plant-west': spriteDefinition({
     sheet: 'brick',
     sourceRectPx: [257, 347, 50, 53],
     districtTypes: ['industrial'],
-    baseScale: 0.88,
-    visualWeight: 0.92,
     sizeClass: 'mid',
-  },
-  'brick-plant-east': {
+    drawScale: 0.8,
+    footprintTiles: { w: 1, h: 1 },
+  }),
+  'brick-plant-east': spriteDefinition({
     sheet: 'brick',
     sourceRectPx: [197, 350, 50, 49],
     districtTypes: ['industrial'],
-    baseScale: 0.88,
-    visualWeight: 0.92,
     sizeClass: 'mid',
-  },
-  'brick-mixed-corner': {
+    drawScale: 0.8,
+    footprintTiles: { w: 1, h: 1 },
+  }),
+  'brick-mixed-corner': spriteDefinition({
     sheet: 'brick',
     sourceRectPx: [136, 354, 50, 45],
     districtTypes: ['mixed'],
-    baseScale: 0.88,
-    visualWeight: 0.92,
     sizeClass: 'mid',
-  },
-  'brick-south-block': {
+    drawScale: 0.78,
+  }),
+  'brick-south-block': spriteDefinition({
     sheet: 'brick',
     sourceRectPx: [78, 358, 50, 41],
     districtTypes: ['mixed', 'park'],
-    baseScale: 0.88,
-    visualWeight: 0.92,
     sizeClass: 'mid',
-  },
-  'brick-loft': {
+    drawScale: 0.78,
+    footprintTiles: { w: 2, h: 1 },
+  }),
+  'brick-loft': spriteDefinition({
     sheet: 'brick',
     sourceRectPx: [170, 74, 50, 47],
     districtTypes: ['commercial', 'mixed'],
-    baseScale: 0.9,
-    visualWeight: 0.92,
     sizeClass: 'mid',
-  },
-  'bricklarge-tower-west': {
+    drawScale: 0.78,
+    footprintTiles: { w: 2, h: 1 },
+  }),
+  'bricklarge-tower-west': spriteDefinition({
     sheet: 'brickLarge',
     sourceRectPx: [32, 499, 132, 164],
     districtTypes: ['residential'],
-    baseScale: 0.52,
-    visualWeight: 1.0,
     sizeClass: 'tower',
-  },
-  'bricklarge-tower-east': {
+    drawScale: 0.9,
+    placementPriority: 112,
+    anchor: { x: 0.48, y: 0.99 },
+  }),
+  'bricklarge-tower-east': spriteDefinition({
     sheet: 'brickLarge',
     sourceRectPx: [456, 497, 132, 158],
     districtTypes: ['residential'],
-    baseScale: 0.52,
-    visualWeight: 1.0,
     sizeClass: 'tower',
-  },
-  'bricklarge-mid-plaza': {
+    drawScale: 0.9,
+    placementPriority: 112,
+    anchor: { x: 0.52, y: 0.99 },
+  }),
+  'bricklarge-mid-plaza': spriteDefinition({
     sheet: 'brickLarge',
     sourceRectPx: [142, 317, 132, 92],
     districtTypes: ['mixed', 'commercial'],
-    baseScale: 0.58,
-    visualWeight: 1.02,
     sizeClass: 'mid',
-  },
-  'bricklarge-factory': {
+    drawScale: 0.88,
+    placementPriority: 88,
+  }),
+  'bricklarge-factory': spriteDefinition({
     sheet: 'brickLarge',
     sourceRectPx: [334, 331, 100, 78],
     districtTypes: ['industrial'],
-    baseScale: 0.64,
-    visualWeight: 1.04,
     sizeClass: 'mid',
-  },
+    drawScale: 0.84,
+    footprintTiles: { w: 2, h: 2 },
+    placementPriority: 96,
+  }),
 };
 
 export const DISTRICT_COMPOSITIONS = {
