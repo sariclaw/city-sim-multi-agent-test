@@ -4,20 +4,24 @@ export function createGameLoop({ store, engine }) {
   function simulationFrame(timestamp) {
     const state = store.getState();
 
-    if (!state.sim.lastFrameMs) {
-      state.sim.lastFrameMs = timestamp;
+    if (!state.simulation.lastFrameMs) {
+      state.simulation.lastFrameMs = timestamp;
     }
 
-    const elapsed = timestamp - state.sim.lastFrameMs;
-    state.sim.lastFrameMs = timestamp;
+    const elapsed = timestamp - state.simulation.lastFrameMs;
+    state.simulation.lastFrameMs = timestamp;
 
-    if (!state.sim.paused && !state.gameOver) {
-      state.sim.accumulatorMs += elapsed;
+    if (!state.simulation.paused && !state.simulation.gameOver) {
+      state.simulation.accumulatorMs += elapsed;
       const stepMs = engine.currentTickMs();
 
-      while (state.sim.accumulatorMs >= stepMs && !store.getState().gameOver && !store.getState().sim.paused) {
-        state.sim.accumulatorMs -= stepMs;
-        engine.tickCity();
+      while (
+        state.simulation.accumulatorMs >= stepMs
+        && !store.getState().simulation.gameOver
+        && !store.getState().simulation.paused
+      ) {
+        state.simulation.accumulatorMs -= stepMs;
+        engine.tickSimulation();
       }
     }
 

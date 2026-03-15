@@ -22,7 +22,7 @@ function renderApp() {
 }
 
 store.subscribe((_state, reason) => {
-  if (reason === 'canvas-hover' || reason === 'camera') {
+  if (reason === 'canvas-hover' || reason === 'camera' || reason === 'preview' || reason === 'overlay') {
     controller.bindCanvas();
     renderer.paint();
     return;
@@ -48,14 +48,18 @@ window.citySimUI = {
     renderApp();
   },
   pause() {
-    engine.togglePause(true);
+    engine.pause();
   },
   resume() {
-    engine.togglePause(false);
+    engine.resume();
+  },
+  tick() {
+    engine.tickSimulation();
   },
   setSpeed: engine.setSpeed,
-  selectDistrict: engine.selectDistrict,
-  selectAsset: engine.selectAsset,
+  selectTool: engine.selectTool,
+  setOverlayMode: engine.setOverlayMode,
+  togglePolicy: engine.togglePolicy,
 };
 
 engine.initialize();

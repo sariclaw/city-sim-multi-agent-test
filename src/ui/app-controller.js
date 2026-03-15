@@ -1,8 +1,8 @@
 export function createAppController({ app, store, engine, renderer }) {
-  let resizeQueued = false;
-  let cameraDrag = null;
   let boundCanvas = null;
-  let canvasHandlers = null;
+  let pointerHandlers = null;
+  let dragState = null;
+  let keyboardPan = false;
 
   function normalizedWheelDelta(event) {
     if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) return event.deltaY * 16;
@@ -10,130 +10,132 @@ export function createAppController({ app, store, engine, renderer }) {
     return event.deltaY;
   }
 
-  function pointInsideCanvas(event, canvas) {
-    const rect = canvas.getBoundingClientRect();
-    return (
-      event.clientX >= rect.left
-      && event.clientX <= rect.right
-      && event.clientY >= rect.top
-      && event.clientY <= rect.bottom
-    );
-  }
-
-  function wheelTargetsPanel(event) {
-    return event.target instanceof Element && Boolean(event.target.closest('.floating-panel, .inspector-column'));
-  }
-
   function zoomFromWheelEvent(event, canvas) {
-    if (event.defaultPrevented || !canvas || wheelTargetsPanel(event) || !pointInsideCanvas(event, canvas)) {
-      return false;
-    }
-
     const delta = normalizedWheelDelta(event);
     if (!delta) return false;
-
     event.preventDefault();
     const zoomFactor = Math.exp(-delta * 0.0022);
-    const point = renderer.canvasPoint(event, canvas);
-    return renderer.setZoomLevel(
-      store.getState().ui.zoom * zoomFactor,
-      point,
-      canvas.clientWidth,
-      canvas.clientHeight,
-    );
+    return renderer.setZoomLevel(store.getState().ui.zoom * zoomFactor, renderer.canvasPoint(event, canvas), canvas.clientWidth, canvas.clientHeight);
   }
 
   function bindCanvas() {
     const canvas = renderer.getCanvas();
     if (!canvas || canvas === boundCanvas) return;
 
-    if (boundCanvas && canvasHandlers) {
-      boundCanvas.removeEventListener('pointerdown', canvasHandlers.pointerdown);
-      boundCanvas.removeEventListener('pointermove', canvasHandlers.pointermove);
-      boundCanvas.removeEventListener('pointerleave', canvasHandlers.pointerleave);
-      boundCanvas.removeEventListener('pointerup', canvasHandlers.pointerup);
-      boundCanvas.removeEventListener('pointercancel', canvasHandlers.pointercancel);
-      boundCanvas.removeEventListener('wheel', canvasHandlers.wheel);
+    if (boundCanvas && pointerHandlers) {
+      boundCanvas.removeEventListener('pointerdown', pointerHandlers.pointerdown);
+      boundCanvas.removeEventListener('pointermove', pointerHandlers.pointermove);
+      boundCanvas.removeEventListener('pointerup', pointerHandlers.pointerup);
+      boundCanvas.removeEventListener('pointerleave', pointerHandlers.pointerleave);
+      boundCanvas.removeEventListener('pointercancel', pointerHandlers.pointercancel);
+      boundCanvas.removeEventListener('contextmenu', pointerHandlers.contextmenu);
+      boundCanvas.removeEventListener('wheel', pointerHandlers.wheel);
     }
 
-    canvas.style.cursor = 'grab';
-
-    canvasHandlers = {
+    pointerHandlers = {
       pointerdown(event) {
         const point = renderer.canvasPoint(event, canvas);
-        cameraDrag = {
+        const hit = renderer.hitTest(point);
+
+        if (event.button === 1 || event.button === 2 || keyboardPan) {
+          dragState = {
+            mode: 'pan',
+            pointerId: event.pointerId,
+            origin: point,
+            startCamera: { ...store.getState().ui.camera },
+          };
+          canvas.setPointerCapture(event.pointerId);
+          canvas.style.cursor = 'grabbing';
+          return;
+        }
+
+        if (event.shiftKey && hit?.key) {
+          engine.selectAt(hit.tileKey ?? hit.key);
+          return;
+        }
+
+        const cell = hit?.tileKey ?? hit?.key;
+        if (!cell) return;
+        const [x, y] = cell.split(',').map(Number);
+        dragState = {
+          mode: 'paint',
           pointerId: event.pointerId,
-          startPoint: point,
-          startCamera: { ...store.getState().ui.camera },
           moved: false,
         };
         canvas.setPointerCapture(event.pointerId);
-        canvas.style.cursor = 'grabbing';
+        engine.beginPlacementPreview({ x, y });
       },
       pointermove(event) {
-        if (cameraDrag && cameraDrag.pointerId === event.pointerId) {
-          const point = renderer.canvasPoint(event, canvas);
-          const deltaX = point.x - cameraDrag.startPoint.x;
-          const deltaY = point.y - cameraDrag.startPoint.y;
-          if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) {
-            cameraDrag.moved = true;
-            engine.clearHoveredTarget();
-          }
-          renderer.setCameraPosition({
-            x: cameraDrag.startCamera.x + deltaX,
-            y: cameraDrag.startCamera.y + deltaY,
-          }, canvas.clientWidth, canvas.clientHeight);
+        const point = renderer.canvasPoint(event, canvas);
+        const hit = renderer.hitTest(point);
+        const cellKey = hit?.tileKey ?? hit?.key ?? null;
+
+        if (cellKey) {
+          const [x, y] = cellKey.split(',').map(Number);
+          engine.updateCursorCell({ x, y });
+        } else {
+          engine.updateCursorCell(null);
+        }
+
+        if (!dragState || dragState.pointerId !== event.pointerId) return;
+
+        if (dragState.mode === 'pan') {
+          const dx = point.x - dragState.origin.x;
+          const dy = point.y - dragState.origin.y;
+          renderer.setCameraPosition(
+            { x: dragState.startCamera.x + dx, y: dragState.startCamera.y + dy },
+            canvas.clientWidth,
+            canvas.clientHeight,
+          );
           return;
         }
 
-        const point = renderer.canvasPoint(event, canvas);
-        const hit = renderer.hitTest(point);
-        const currentHover = store.getState().ui.hoveredTarget;
-        const next = hit ? { kind: hit.kind, key: hit.key } : null;
-        if ((next?.kind ?? null) === (currentHover?.kind ?? null) && (next?.key ?? null) === (currentHover?.key ?? null)) {
-          return;
+        if (dragState.mode === 'paint' && cellKey) {
+          dragState.moved = true;
+          const [x, y] = cellKey.split(',').map(Number);
+          engine.updatePlacementPreview({ x, y });
         }
-        canvas.style.cursor = hit ? 'pointer' : 'grab';
-        engine.setHoveredTarget(next);
-      },
-      pointerleave() {
-        if (cameraDrag) return;
-        canvas.style.cursor = 'grab';
-        engine.clearHoveredTarget();
       },
       pointerup(event) {
-        if (!cameraDrag || cameraDrag.pointerId !== event.pointerId) return;
-        const dragged = cameraDrag.moved;
-        cameraDrag = null;
-        canvas.style.cursor = 'grab';
+        if (!dragState || dragState.pointerId !== event.pointerId) return;
         try {
           canvas.releasePointerCapture(event.pointerId);
         } catch {
-          // Ignore release errors when the pointer capture is already gone.
+          // ignore
         }
-        if (dragged) return;
-        const point = renderer.canvasPoint(event, canvas);
-        const hit = renderer.hitTest(point);
-        if (!hit) return;
-        if (hit.kind === 'asset') engine.selectAsset(hit.key);
-        if (hit.kind === 'district') engine.selectDistrict(hit.key);
+
+        if (dragState.mode === 'pan') {
+          canvas.style.cursor = 'crosshair';
+          dragState = null;
+          return;
+        }
+
+        engine.commitPlacement();
+        dragState = null;
       },
-      pointercancel(event) {
-        if (!cameraDrag || cameraDrag.pointerId !== event.pointerId) return;
-        cameraDrag = null;
-        canvas.style.cursor = 'grab';
+      pointerleave() {
+        engine.updateCursorCell(null);
+      },
+      pointercancel() {
+        dragState = null;
+        engine.cancelPlacementPreview();
+      },
+      contextmenu(event) {
+        event.preventDefault();
       },
       wheel(event) {
         zoomFromWheelEvent(event, canvas);
       },
     };
 
-    canvas.addEventListener('pointerdown', canvasHandlers.pointerdown);
-    canvas.addEventListener('pointermove', canvasHandlers.pointermove);
-    canvas.addEventListener('pointerleave', canvasHandlers.pointerleave);
-    canvas.addEventListener('pointerup', canvasHandlers.pointerup);
-    canvas.addEventListener('pointercancel', canvasHandlers.pointercancel);
-    canvas.addEventListener('wheel', canvasHandlers.wheel, { passive: false });
+    canvas.style.cursor = 'crosshair';
+    canvas.addEventListener('pointerdown', pointerHandlers.pointerdown);
+    canvas.addEventListener('pointermove', pointerHandlers.pointermove);
+    canvas.addEventListener('pointerup', pointerHandlers.pointerup);
+    canvas.addEventListener('pointerleave', pointerHandlers.pointerleave);
+    canvas.addEventListener('pointercancel', pointerHandlers.pointercancel);
+    canvas.addEventListener('contextmenu', pointerHandlers.contextmenu);
+    canvas.addEventListener('wheel', pointerHandlers.wheel, { passive: false });
     boundCanvas = canvas;
   }
 
@@ -141,32 +143,39 @@ export function createAppController({ app, store, engine, renderer }) {
     const button = event.target.closest('button');
     if (!button) return;
 
-    const { action, build, speed, selectDistrict: districtKey, selectAsset: assetKey } = button.dataset;
-    if (action === 'advance') engine.rushSeason();
-    if (action === 'toggle-pause') engine.togglePause();
-    if (action === 'reset') engine.resetGame();
-    if (build) engine.applyAction(build);
-    if (speed) engine.setSpeed(Number(speed));
-    if (districtKey) engine.selectDistrict(districtKey);
-    if (assetKey) engine.selectAsset(assetKey);
+    if (button.dataset.action === 'toggle-pause') engine.togglePause();
+    if (button.dataset.action === 'tick') engine.tickSimulation();
+    if (button.dataset.action === 'reset') engine.resetGame();
+    if (button.dataset.speed) engine.setSpeed(Number(button.dataset.speed));
+    if (button.dataset.tool) engine.selectTool(button.dataset.tool);
+    if (button.dataset.overlay) engine.setOverlayMode(button.dataset.overlay);
+    if (button.dataset.policy) engine.togglePolicy(button.dataset.policy);
+
+    if (button.dataset.tax && button.dataset.delta) {
+      const key = button.dataset.tax;
+      const next = store.getState().city.economy.taxes[key] + Number(button.dataset.delta);
+      engine.setTaxRate(key, next);
+    }
+
+    if (button.dataset.budget && button.dataset.delta) {
+      const key = button.dataset.budget;
+      const next = store.getState().city.economy.budget[key] + Number(button.dataset.delta);
+      engine.setBudget(key, next);
+    }
   });
 
   window.addEventListener('resize', () => {
-    if (resizeQueued) return;
-    resizeQueued = true;
-    window.requestAnimationFrame(() => {
-      resizeQueued = false;
-      if (!renderer.syncCameraToCanvas()) {
-        renderer.resize();
-      }
-    });
+    renderer.syncCameraToCanvas();
+    renderer.paint();
   });
 
-  window.addEventListener('wheel', (event) => {
-    const canvas = renderer.getCanvas();
-    if (!canvas) return;
-    zoomFromWheelEvent(event, canvas);
-  }, { passive: false });
+  window.addEventListener('keydown', (event) => {
+    if (event.code === 'Space') keyboardPan = true;
+  });
+
+  window.addEventListener('keyup', (event) => {
+    if (event.code === 'Space') keyboardPan = false;
+  });
 
   return {
     bindCanvas,
