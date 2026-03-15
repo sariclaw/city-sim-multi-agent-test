@@ -11,13 +11,13 @@ const SPEED_OPTIONS = [
 ];
 
 const DISTRICT_LAYOUT = [
-  { key: 'civic', label: 'Civic Core', type: 'civic', x: 0.38, y: 0.16, w: 0.24, h: 0.21 },
-  { key: 'north', label: 'North Steps', type: 'residential', x: 0.64, y: 0.1, w: 0.22, h: 0.24 },
-  { key: 'harbor', label: 'Rivergate', type: 'utility', x: 0.12, y: 0.14, w: 0.18, h: 0.27 },
-  { key: 'market', label: 'Market Spine', type: 'commercial', x: 0.39, y: 0.41, w: 0.24, h: 0.19 },
-  { key: 'park', label: 'Green Loop', type: 'park', x: 0.14, y: 0.47, w: 0.22, h: 0.26 },
-  { key: 'industry', label: 'Ironworks', type: 'industrial', x: 0.67, y: 0.44, w: 0.19, h: 0.24 },
-  { key: 'south', label: 'South Reach', type: 'mixed', x: 0.39, y: 0.65, w: 0.24, h: 0.19 },
+  { key: 'civic', label: 'Civic Core', type: 'civic', x: 0.355, y: 0.145, w: 0.29, h: 0.22 },
+  { key: 'north', label: 'North Steps', type: 'residential', x: 0.645, y: 0.09, w: 0.225, h: 0.25 },
+  { key: 'harbor', label: 'Rivergate', type: 'utility', x: 0.105, y: 0.16, w: 0.21, h: 0.27 },
+  { key: 'market', label: 'Market Spine', type: 'commercial', x: 0.34, y: 0.395, w: 0.325, h: 0.2 },
+  { key: 'park', label: 'Green Loop', type: 'park', x: 0.105, y: 0.505, w: 0.225, h: 0.25 },
+  { key: 'industry', label: 'Ironworks', type: 'industrial', x: 0.675, y: 0.445, w: 0.2, h: 0.245 },
+  { key: 'south', label: 'South Reach', type: 'mixed', x: 0.355, y: 0.66, w: 0.295, h: 0.19 },
 ];
 
 const DISTRICT_MODELS = {
@@ -232,6 +232,16 @@ const DISTRICT_SPRITES = {
     { sheet: 'city', region: [0.48, 0.08, 0.34, 0.32], anchor: [0.4, 0.22, 0.3, 0.5] },
     { sheet: 'brick', region: [0.54, 0.18, 0.26, 0.52], anchor: [0.74, 0.4, 0.15, 0.28] },
   ],
+};
+
+const DISTRICT_TYPE_LABELS = {
+  civic: 'CIVIC',
+  residential: 'RES',
+  utility: 'SERVICES',
+  commercial: 'MIXED JOBS',
+  industrial: 'INDUSTRY',
+  park: 'OPEN SPACE',
+  mixed: 'URBAN MIX',
 };
 
 const ASSET_ICON_SPRITES = {
@@ -1199,7 +1209,7 @@ function createCityViewModel() {
     intensity: clamp(Math.round(2 + district.development * 5 + district.condition * 2), 2, 9),
     utilityTone: toneFromRatio(1 / Math.max(district.metrics.utilityLoad, 0.6)),
     growthTone: district.growthTrend > 1 ? 'good' : district.growthTrend > -0.4 ? 'warn' : 'danger',
-  }));
+  })).sort((left, right) => (left.y + left.h) - (right.y + right.h));
 
   return {
     palette: seasonPalette(currentSeason()),
@@ -1372,16 +1382,62 @@ function drawRoadTile(context, tile, dx, dy, size, rotation = 0, alpha = 1) {
 
 function districtColor(type) {
   const colors = {
-    civic: ['#6f98aa', '#24343d'],
-    residential: ['#698f98', '#202d34'],
-    utility: ['#64879e', '#1c2a35'],
-    commercial: ['#9a7f54', '#35281b'],
-    industrial: ['#8f6a50', '#322117'],
-    park: ['#54795a', '#203024'],
-    mixed: ['#7d6f8e', '#2a2434'],
+    civic: ['#7daab5', '#243746'],
+    residential: ['#7396a2', '#213540'],
+    utility: ['#658aa4', '#1c2d39'],
+    commercial: ['#a88758', '#3b2a1c'],
+    industrial: ['#997056', '#39251b'],
+    park: ['#567e5d', '#1d3222'],
+    mixed: ['#8b7896', '#2c2438'],
   };
 
   return colors[type] ?? colors.mixed;
+}
+
+function districtAccent(type) {
+  const accents = {
+    civic: '#cdeeff',
+    residential: '#c9efff',
+    utility: '#7be0ff',
+    commercial: '#ffd089',
+    industrial: '#ffb67d',
+    park: '#a8e78e',
+    mixed: '#e3c0ff',
+  };
+
+  return accents[type] ?? '#dbeeff';
+}
+
+function districtRoadGrid(type) {
+  switch (type) {
+    case 'civic':
+      return { cols: 3, rows: 3, plaza: true, diagonal: false };
+    case 'residential':
+      return { cols: 4, rows: 4, plaza: false, diagonal: false };
+    case 'utility':
+      return { cols: 3, rows: 2, plaza: false, diagonal: false };
+    case 'commercial':
+      return { cols: 4, rows: 3, plaza: true, diagonal: false };
+    case 'industrial':
+      return { cols: 4, rows: 3, plaza: false, diagonal: true };
+    case 'park':
+      return { cols: 2, rows: 2, plaza: true, diagonal: true };
+    case 'mixed':
+      return { cols: 4, rows: 3, plaza: false, diagonal: false };
+    default:
+      return { cols: 3, rows: 3, plaza: false, diagonal: false };
+  }
+}
+
+function roadCrossSection(road, width) {
+  const base = road.avenue ? Math.max(26, width * 0.024) : Math.max(16, width * 0.015);
+  return {
+    shadow: base * 1.42,
+    shoulder: base * 1.15,
+    asphalt: base,
+    inner: base * (road.avenue ? 0.86 : 0.78),
+    median: road.avenue ? base * 0.16 : 0,
+  };
 }
 
 function drawRoadNetwork(context, width, height) {
@@ -1391,27 +1447,52 @@ function drawRoadNetwork(context, width, height) {
     const x2 = road.x2 * width;
     const y2 = road.y2 * height;
     const axisAligned = Math.abs(x1 - x2) < 1 || Math.abs(y1 - y2) < 1;
-    const roadWidth = road.avenue ? Math.max(24, width * 0.022) : Math.max(16, width * 0.015);
+    const roadWidth = roadCrossSection(road, width);
+    const angle = Math.atan2(y2 - y1, x2 - x1);
+    const trafficPulse = ((state.sim.tick % 24) / 24);
 
     context.lineCap = 'round';
-    context.strokeStyle = road.avenue ? 'rgba(23, 29, 35, 0.96)' : 'rgba(18, 24, 30, 0.9)';
-    context.lineWidth = roadWidth;
+    context.strokeStyle = 'rgba(3, 7, 10, 0.42)';
+    context.lineWidth = roadWidth.shadow;
     context.beginPath();
     context.moveTo(x1, y1);
     context.lineTo(x2, y2);
     context.stroke();
 
-    context.strokeStyle = road.avenue ? 'rgba(101, 108, 115, 0.62)' : 'rgba(86, 94, 104, 0.58)';
-    context.lineWidth = Math.max(roadWidth * 0.8, 12);
+    context.strokeStyle = road.avenue ? 'rgba(138, 150, 158, 0.34)' : 'rgba(117, 128, 138, 0.24)';
+    context.lineWidth = roadWidth.shoulder;
     context.beginPath();
     context.moveTo(x1, y1);
     context.lineTo(x2, y2);
     context.stroke();
+
+    context.strokeStyle = road.avenue ? 'rgba(31, 35, 39, 0.98)' : 'rgba(27, 31, 36, 0.96)';
+    context.lineWidth = roadWidth.asphalt;
+    context.beginPath();
+    context.moveTo(x1, y1);
+    context.lineTo(x2, y2);
+    context.stroke();
+
+    context.strokeStyle = road.avenue ? 'rgba(86, 95, 103, 0.38)' : 'rgba(78, 86, 96, 0.26)';
+    context.lineWidth = roadWidth.inner;
+    context.beginPath();
+    context.moveTo(x1, y1);
+    context.lineTo(x2, y2);
+    context.stroke();
+
+    if (road.avenue) {
+      context.strokeStyle = 'rgba(73, 138, 98, 0.82)';
+      context.lineWidth = Math.max(2, roadWidth.median);
+      context.beginPath();
+      context.moveTo(x1, y1);
+      context.lineTo(x2, y2);
+      context.stroke();
+    }
 
     if (axisAligned) {
-      context.strokeStyle = 'rgba(251, 232, 170, 0.45)';
-      context.lineWidth = road.avenue ? 2.6 : 1.6;
-      context.setLineDash([10, 12]);
+      context.strokeStyle = road.avenue ? 'rgba(255, 241, 182, 0.72)' : 'rgba(255, 243, 191, 0.44)';
+      context.lineWidth = road.avenue ? 2.8 : 1.4;
+      context.setLineDash(road.avenue ? [12, 18] : [8, 14]);
       context.beginPath();
       context.moveTo(x1, y1);
       context.lineTo(x2, y2);
@@ -1419,11 +1500,19 @@ function drawRoadNetwork(context, width, height) {
       context.setLineDash([]);
     }
 
+    if (road.avenue) {
+      const pulseX = lerp(x1, x2, trafficPulse);
+      const pulseY = lerp(y1, y2, trafficPulse);
+      context.fillStyle = 'rgba(255, 212, 120, 0.26)';
+      context.beginPath();
+      context.arc(pulseX, pulseY, roadWidth.asphalt * 0.28, 0, Math.PI * 2);
+      context.fill();
+    }
+
     if (!spriteLibrary.ready) return;
 
     const distance = Math.hypot(x2 - x1, y2 - y1);
-    const steps = Math.max(2, Math.floor(distance / (roadWidth * 0.8)));
-    const angle = Math.atan2(y2 - y1, x2 - x1);
+    const steps = Math.max(2, Math.floor(distance / (roadWidth.asphalt * 0.78)));
     const tileA = road.avenue ? ROAD_TILE_LIBRARY.avenueA : ROAD_TILE_LIBRARY.diagonal;
     const tileB = road.avenue ? ROAD_TILE_LIBRARY.avenueB : ROAD_TILE_LIBRARY.reverse;
     for (let step = 0; step <= steps; step += 1) {
@@ -1431,11 +1520,11 @@ function drawRoadNetwork(context, width, height) {
       const tileX = lerp(x1, x2, t);
       const tileY = lerp(y1, y2, t);
       const tile = step % 2 === 0 ? tileA : tileB;
-      drawRoadTile(context, tile, tileX, tileY, roadWidth * 1.25, angle, 0.68);
+      drawRoadTile(context, tile, tileX, tileY, roadWidth.asphalt * 1.25, angle, road.avenue ? 0.76 : 0.64);
     }
 
-    drawRoadTile(context, road.avenue ? ROAD_TILE_LIBRARY.capA : ROAD_TILE_LIBRARY.edge, x1, y1, roadWidth * 1.15, angle, 0.78);
-    drawRoadTile(context, road.avenue ? ROAD_TILE_LIBRARY.capB : ROAD_TILE_LIBRARY.edge, x2, y2, roadWidth * 1.15, angle + Math.PI, 0.78);
+    drawRoadTile(context, road.avenue ? ROAD_TILE_LIBRARY.capA : ROAD_TILE_LIBRARY.edge, x1, y1, roadWidth.asphalt * 1.15, angle, 0.78);
+    drawRoadTile(context, road.avenue ? ROAD_TILE_LIBRARY.capB : ROAD_TILE_LIBRARY.edge, x2, y2, roadWidth.asphalt * 1.15, angle + Math.PI, 0.78);
   });
 
   if (!spriteLibrary.ready) return;
@@ -1450,7 +1539,21 @@ function drawRoadNetwork(context, width, height) {
       if (y < Math.min(vertical.y1, vertical.y2) * height || y > Math.max(vertical.y1, vertical.y2) * height) return;
       if (x < Math.min(horizontal.x1, horizontal.x2) * width || x > Math.max(horizontal.x1, horizontal.x2) * width) return;
       const size = (vertical.avenue || horizontal.avenue) ? Math.max(28, width * 0.026) : Math.max(22, width * 0.02);
+      context.fillStyle = (vertical.avenue || horizontal.avenue) ? 'rgba(247, 238, 194, 0.08)' : 'rgba(255, 255, 255, 0.03)';
+      fillRoundedRect(context, x - size * 0.9, y - size * 0.9, size * 1.8, size * 1.8, 10, context.fillStyle);
       drawRoadTile(context, ROAD_TILE_LIBRARY.hub, x, y, size, 0, 0.82);
+      if (vertical.avenue || horizontal.avenue) {
+        context.strokeStyle = 'rgba(255, 241, 182, 0.42)';
+        context.lineWidth = 1.5;
+        context.setLineDash([5, 5]);
+        context.beginPath();
+        context.moveTo(x - size * 0.6, y);
+        context.lineTo(x + size * 0.6, y);
+        context.moveTo(x, y - size * 0.6);
+        context.lineTo(x, y + size * 0.6);
+        context.stroke();
+        context.setLineDash([]);
+      }
     });
   });
 }
@@ -1474,31 +1577,73 @@ function drawWaterfront(context, width, height, palette) {
     const py = height * (0.24 + pier * 0.12);
     drawRoadTile(context, ROAD_TILE_LIBRARY.edge, px, py, Math.max(16, width * 0.012), Math.PI / 2, 0.55);
   }
+
+  context.strokeStyle = 'rgba(205, 244, 255, 0.22)';
+  context.lineWidth = Math.max(2, width * 0.003);
+  for (let ripple = 0; ripple < 4; ripple += 1) {
+    const y = height * (0.18 + ripple * 0.16 + ((state.sim.tick + ripple * 2) % 10) * 0.0016);
+    context.beginPath();
+    context.moveTo(width * 0.012, y);
+    context.bezierCurveTo(width * 0.025, y - 4, width * 0.055, y + 4, width * 0.082, y);
+    context.stroke();
+  }
 }
 
 function drawDistrictGround(context, district, frame) {
-  const gridGap = Math.max(12, frame.w * 0.08);
-  context.fillStyle = district.type === 'park' ? 'rgba(73, 110, 78, 0.8)' : 'rgba(31, 38, 45, 0.58)';
+  const grid = districtRoadGrid(district.type);
+  const gridGapX = frame.w / (grid.cols + 0.8);
+  const gridGapY = frame.h / (grid.rows + 0.9);
+  context.fillStyle = district.type === 'park' ? 'rgba(73, 110, 78, 0.88)' : 'rgba(26, 33, 39, 0.68)';
   context.fillRect(frame.x, frame.y, frame.w, frame.h);
 
-  context.strokeStyle = district.type === 'park' ? 'rgba(128, 186, 129, 0.24)' : 'rgba(255, 255, 255, 0.06)';
+  const blockTone =
+    district.type === 'commercial' ? 'rgba(255, 207, 136, 0.08)'
+    : district.type === 'industrial' ? 'rgba(255, 176, 128, 0.06)'
+    : district.type === 'park' ? 'rgba(168, 231, 142, 0.08)'
+    : 'rgba(219, 238, 255, 0.04)';
+  context.fillStyle = blockTone;
+  for (let row = 0; row < grid.rows; row += 1) {
+    for (let col = 0; col < grid.cols; col += 1) {
+      const lotX = frame.x + gridGapX * (col + 0.22);
+      const lotY = frame.y + gridGapY * (row + 0.28);
+      const lotW = gridGapX * (district.type === 'civic' ? 0.88 : 0.72);
+      const lotH = gridGapY * (district.type === 'park' ? 0.58 : 0.62);
+      fillRoundedRect(context, lotX, lotY, lotW, lotH, 8, context.fillStyle);
+    }
+  }
+
+  context.strokeStyle = district.type === 'park' ? 'rgba(128, 186, 129, 0.22)' : 'rgba(255, 255, 255, 0.08)';
   context.lineWidth = 1;
-  for (let x = frame.x + gridGap * 0.5; x < frame.x + frame.w; x += gridGap) {
+  for (let x = frame.x + gridGapX * 0.6; x < frame.x + frame.w; x += gridGapX) {
     context.beginPath();
     context.moveTo(x, frame.y);
     context.lineTo(x, frame.y + frame.h);
     context.stroke();
   }
-  for (let y = frame.y + gridGap * 0.45; y < frame.y + frame.h; y += gridGap * 0.78) {
+  for (let y = frame.y + gridGapY * 0.5; y < frame.y + frame.h; y += gridGapY) {
     context.beginPath();
     context.moveTo(frame.x, y);
     context.lineTo(frame.x + frame.w, y);
     context.stroke();
   }
 
+  if (grid.diagonal) {
+    context.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+    context.beginPath();
+    context.moveTo(frame.x, frame.y + frame.h * 0.86);
+    context.lineTo(frame.x + frame.w * 0.32, frame.y + frame.h * 0.44);
+    context.lineTo(frame.x + frame.w, frame.y + frame.h * 0.08);
+    context.stroke();
+  }
+
   if (district.type === 'park') {
-    context.fillStyle = 'rgba(154, 204, 132, 0.12)';
+    context.fillStyle = 'rgba(154, 204, 132, 0.18)';
     fillRoundedRect(context, frame.x + frame.w * 0.08, frame.y + frame.h * 0.12, frame.w * 0.84, frame.h * 0.7, 18, context.fillStyle);
+  }
+
+  if (grid.plaza) {
+    context.fillStyle = district.type === 'civic' ? 'rgba(239, 243, 248, 0.12)' : 'rgba(246, 214, 155, 0.1)';
+    fillRoundedRect(context, frame.x + frame.w * 0.31, frame.y + frame.h * 0.3, frame.w * 0.24, frame.h * 0.2, 10, context.fillStyle);
   }
 }
 
@@ -1540,6 +1685,17 @@ function drawDistrictSprites(context, district, frame) {
     return;
   }
 
+  const clusterBaseY = frame.y + frame.h * 0.83;
+  for (let band = 0; band < 3; band += 1) {
+    const bandWidth = frame.w * (0.2 + band * 0.12);
+    const bandX = frame.x + frame.w * (0.08 + band * 0.22);
+    const bandY = clusterBaseY - band * frame.h * 0.08;
+    context.fillStyle = 'rgba(4, 8, 12, 0.18)';
+    context.beginPath();
+    context.ellipse(bandX + bandWidth * 0.5, bandY, bandWidth * 0.62, frame.h * 0.06, 0, 0, Math.PI * 2);
+    context.fill();
+  }
+
   if (district.type === 'park') {
     for (let patch = 0; patch < 7; patch += 1) {
       const x = frame.x + frame.w * (0.08 + (patch % 4) * 0.2);
@@ -1562,6 +1718,10 @@ function drawDistrictSprites(context, district, frame) {
     const dy = frame.y + frame.h * ay - drift * 0.15;
     const dw = frame.w * aw * lerp(0.94, 1.06, district.development / 1.4);
     const dh = frame.h * ah * lerp(0.92, 1.08, district.condition);
+    context.fillStyle = 'rgba(3, 6, 9, 0.18)';
+    context.beginPath();
+    context.ellipse(dx + dw * 0.5, dy + dh * 0.94, dw * 0.34, dh * 0.07, 0, 0, Math.PI * 2);
+    context.fill();
     drawSpriteRegion(context, image, spriteDef.region, dx, dy, dw, dh, 0.92);
   });
 
@@ -1600,6 +1760,21 @@ function drawDistrictSprites(context, district, frame) {
       context.fill();
     }
   }
+
+  if (district.type === 'residential' || district.type === 'mixed') {
+    context.fillStyle = 'rgba(248, 214, 136, 0.22)';
+    for (let windowBand = 0; windowBand < 4; windowBand += 1) {
+      fillRoundedRect(
+        context,
+        frame.x + frame.w * (0.12 + windowBand * 0.18),
+        frame.y + frame.h * 0.62,
+        frame.w * 0.08,
+        frame.h * 0.028,
+        5,
+        context.fillStyle,
+      );
+    }
+  }
 }
 
 function drawDistrict(context, district, width, height) {
@@ -1608,10 +1783,13 @@ function drawDistrict(context, district, width, height) {
   const w = district.w * width;
   const h = district.h * height;
   const [fill, shade] = districtColor(district.type);
+  const accent = districtAccent(district.type);
   const gradient = context.createLinearGradient(x, y, x + w, y + h);
   gradient.addColorStop(0, fill);
   gradient.addColorStop(1, shade);
 
+  context.fillStyle = 'rgba(4, 8, 12, 0.22)';
+  fillRoundedRect(context, x + 8, y + h * 0.08, w, h, Math.max(16, width * 0.018), context.fillStyle);
   fillRoundedRect(context, x, y, w, h, Math.max(16, width * 0.018), gradient);
   strokeRoundedRect(
     context,
@@ -1620,11 +1798,11 @@ function drawDistrict(context, district, width, height) {
     w,
     h,
     Math.max(16, width * 0.018),
-    district.growthTone === 'good' ? 'rgba(158, 226, 173, 0.74)' : district.growthTone === 'danger' ? 'rgba(255, 159, 145, 0.78)' : 'rgba(255, 255, 255, 0.14)',
+    district.growthTone === 'good' ? 'rgba(158, 226, 173, 0.74)' : district.growthTone === 'danger' ? 'rgba(255, 159, 145, 0.78)' : 'rgba(255, 255, 255, 0.2)',
     district.growthTone === 'warn' ? 1.2 : 2,
   );
 
-  const inner = { x: x + w * 0.04, y: y + h * 0.08, w: w * 0.92, h: h * 0.8 };
+  const inner = { x: x + w * 0.04, y: y + h * 0.1, w: w * 0.92, h: h * 0.74 };
   context.fillStyle = 'rgba(255, 255, 255, 0.04)';
   fillRoundedRect(context, inner.x, inner.y, inner.w, inner.h, Math.max(12, width * 0.015), context.fillStyle);
 
@@ -1638,6 +1816,8 @@ function drawDistrict(context, district, width, height) {
   const selection = selectionMatches('district', district.key);
   const hovered = hoverMatches('district', district.key);
   if (selection || hovered) {
+    context.fillStyle = selection ? 'rgba(255, 255, 255, 0.08)' : 'rgba(255, 255, 255, 0.04)';
+    fillRoundedRect(context, x - 8, y - 8, w + 16, h + 16, Math.max(20, width * 0.022), context.fillStyle);
     strokeRoundedRect(
       context,
       x - 4,
@@ -1645,21 +1825,42 @@ function drawDistrict(context, district, width, height) {
       w + 8,
       h + 8,
       Math.max(18, width * 0.02),
-      selection ? '#f4fbff' : 'rgba(255, 255, 255, 0.72)',
+      selection ? accent : 'rgba(255, 255, 255, 0.72)',
       selection ? 2.5 : 1.8,
     );
+    if (selection) {
+      context.strokeStyle = `${accent}66`;
+      context.lineWidth = 2;
+      context.setLineDash([10, 8]);
+      context.beginPath();
+      context.moveTo(x + w * 0.06, y + h * 0.06);
+      context.lineTo(x + w * 0.94, y + h * 0.06);
+      context.lineTo(x + w * 0.94, y + h * 0.94);
+      context.lineTo(x + w * 0.06, y + h * 0.94);
+      context.closePath();
+      context.stroke();
+      context.setLineDash([]);
+    }
   }
+
+  context.fillStyle = `${accent}cc`;
+  context.font = `700 ${Math.max(9, width * 0.009)}px "Trebuchet MS", sans-serif`;
+  context.fillText(DISTRICT_TYPE_LABELS[district.type] ?? district.type.toUpperCase(), x + w * 0.07, y + h * 0.12);
 
   context.fillStyle = '#f5fbff';
   context.font = `600 ${Math.max(12, width * 0.018)}px "Trebuchet MS", sans-serif`;
-  context.fillText(district.label, x + w * 0.07, y + h * 0.16);
+  context.fillText(district.label, x + w * 0.07, y + h * 0.2);
 
   context.fillStyle = district.utilityTone === 'good' ? '#9ee2ad' : district.utilityTone === 'warn' ? '#ffd37f' : '#ff9f91';
   context.font = `500 ${Math.max(10, width * 0.013)}px "Trebuchet MS", sans-serif`;
-  context.fillText(district.status, x + w * 0.07, y + h * 0.26);
+  context.fillText(district.status, x + w * 0.07, y + h * 0.29);
 
-  context.fillStyle = 'rgba(8, 15, 22, 0.55)';
-  fillRoundedRect(context, x + w * 0.06, y + h * 0.78, w * 0.42, h * 0.13, 12, context.fillStyle);
+  context.fillStyle = 'rgba(8, 15, 22, 0.62)';
+  fillRoundedRect(context, x + w * 0.06, y + h * 0.8, w * 0.58, h * 0.11, 12, context.fillStyle);
+  context.fillStyle = 'rgba(255, 255, 255, 0.08)';
+  fillRoundedRect(context, x + w * 0.06, y + h * 0.74, w * 0.48, h * 0.026, 999, context.fillStyle);
+  context.fillStyle = accent;
+  fillRoundedRect(context, x + w * 0.06, y + h * 0.74, w * 0.48 * clamp((district.development + district.condition) / 2, 0, 1), h * 0.026, 999, context.fillStyle);
   context.fillStyle = '#dbeeff';
   context.fillText(`${Math.round(district.localUnrest)}% unrest`, x + w * 0.09, y + h * 0.865);
 
@@ -1684,6 +1885,58 @@ function drawUtilities(context, width, height, overlays) {
   });
 }
 
+function drawBackdropCity(context, width, height, palette, skyline) {
+  const horizonY = height * 0.35;
+  const silhouette = [
+    { x: 0.22, w: 0.035, h: 0.08 },
+    { x: 0.28, w: 0.05, h: 0.12 },
+    { x: 0.36, w: 0.032, h: 0.09 },
+    { x: 0.43, w: 0.056, h: 0.15 },
+    { x: 0.52, w: 0.04, h: 0.11 },
+    { x: 0.58, w: 0.055, h: 0.16 },
+    { x: 0.66, w: 0.042, h: 0.1 },
+    { x: 0.73, w: 0.032, h: 0.08 },
+  ];
+
+  context.fillStyle = 'rgba(14, 22, 31, 0.26)';
+  silhouette.forEach((tower, index) => {
+    const towerHeight = height * (tower.h + (index % 2) * 0.025 + skyline.towers * 0.0025);
+    context.fillRect(width * tower.x, horizonY - towerHeight, width * tower.w, towerHeight);
+    context.fillStyle = 'rgba(240, 197, 118, 0.06)';
+    for (let windowRow = 0; windowRow < 4; windowRow += 1) {
+      context.fillRect(
+        width * tower.x + 4,
+        horizonY - towerHeight + 6 + windowRow * 10,
+        width * tower.w - 8,
+        2,
+      );
+    }
+    context.fillStyle = 'rgba(14, 22, 31, 0.26)';
+  });
+
+  context.fillStyle = `${palette.glow}`;
+  context.fillRect(width * 0.18, horizonY - height * 0.035, width * 0.62, height * 0.05);
+}
+
+function drawForegroundCanopy(context, width, height) {
+  context.fillStyle = 'rgba(8, 14, 20, 0.22)';
+  context.beginPath();
+  context.moveTo(width * 0.08, height * 0.92);
+  context.bezierCurveTo(width * 0.24, height * 0.84, width * 0.42, height * 0.86, width * 0.58, height * 0.92);
+  context.lineTo(width * 0.58, height);
+  context.lineTo(width * 0.08, height);
+  context.closePath();
+  context.fill();
+
+  context.beginPath();
+  context.moveTo(width * 0.72, height * 0.9);
+  context.bezierCurveTo(width * 0.8, height * 0.84, width * 0.9, height * 0.85, width * 0.98, height * 0.92);
+  context.lineTo(width * 0.98, height);
+  context.lineTo(width * 0.72, height);
+  context.closePath();
+  context.fill();
+}
+
 function drawMap(context, viewModel, width, height) {
   interactiveTargets = [];
   const { palette, districts, overlays, skyline, stats } = viewModel;
@@ -1700,6 +1953,7 @@ function drawMap(context, viewModel, width, height) {
   context.arc(width * 0.76, height * 0.18, width * 0.12, 0, Math.PI * 2);
   context.fill();
 
+  drawBackdropCity(context, width, height, palette, skyline);
   drawWaterfront(context, width, height, palette);
   drawRoadNetwork(context, width, height);
   districts.forEach((district) => drawDistrict(context, district, width, height));
@@ -1750,12 +2004,14 @@ function drawMap(context, viewModel, width, height) {
 
   for (let puff = 0; puff < skyline.smoke; puff += 1) {
     const x = width * (0.72 + puff * 0.03);
-    const y = height * (0.47 - puff * 0.015);
+    const y = height * (0.47 - puff * 0.015 - ((state.sim.tick + puff * 4) % 18) * 0.0018);
     context.fillStyle = 'rgba(79, 84, 92, 0.16)';
     context.beginPath();
     context.arc(x, y, width * 0.018, 0, Math.PI * 2);
     context.fill();
   }
+
+  drawForegroundCanopy(context, width, height);
 }
 
 function paintCityMap() {
@@ -1824,8 +2080,8 @@ function actionLabel(key) {
 
 function assetAnchor(district, index = 0) {
   const anchors = [
-    { x: 0.78, y: 0.28 },
-    { x: 0.28, y: 0.72 },
+    { x: 0.8, y: 0.3 },
+    { x: 0.24, y: 0.72 },
   ];
   const anchor = anchors[index % anchors.length];
   return {
@@ -1842,11 +2098,26 @@ function drawAssetMarker(context, asset, district, width, height, index) {
   const selected = selectionMatches('asset', asset.key);
   const hovered = hoverMatches('asset', asset.key);
   const tone = assetActionKey(asset);
+  const districtGlow = districtAccent(district.type);
   const fill =
     tone === 'housing' ? 'rgba(152, 226, 166, 0.86)'
     : tone === 'grid' ? 'rgba(117, 214, 255, 0.84)'
     : tone === 'industry' ? 'rgba(255, 213, 138, 0.84)'
     : 'rgba(234, 241, 255, 0.84)';
+
+  context.strokeStyle = `${districtGlow}44`;
+  context.lineWidth = 2;
+  context.beginPath();
+  context.moveTo(x, y - radius * 1.5);
+  context.lineTo(x, y - radius * 0.25);
+  context.stroke();
+
+  if (selected) {
+    context.fillStyle = `${districtGlow}22`;
+    context.beginPath();
+    context.arc(x, y - radius * 1.6, radius * 0.9, 0, Math.PI * 2);
+    context.fill();
+  }
 
   context.save();
   context.translate(x, y);
@@ -1869,11 +2140,19 @@ function drawAssetMarker(context, asset, district, width, height, index) {
   }
 
   if (selected || hovered) {
-    context.strokeStyle = selected ? '#f4fbff' : 'rgba(255, 255, 255, 0.7)';
+    context.strokeStyle = selected ? districtGlow : 'rgba(255, 255, 255, 0.7)';
     context.lineWidth = selected ? 3 : 2;
     context.beginPath();
     context.arc(x, y, radius + 7, 0, Math.PI * 2);
     context.stroke();
+    if (selected) {
+      context.strokeStyle = `${districtGlow}66`;
+      context.setLineDash([5, 6]);
+      context.beginPath();
+      context.arc(x, y, radius + 13 + (state.sim.tick % 12) * 0.35, 0, Math.PI * 2);
+      context.stroke();
+      context.setLineDash([]);
+    }
   }
 
   context.fillStyle = '#02131b';
