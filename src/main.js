@@ -169,6 +169,81 @@ const actions = [
   },
 ];
 
+const OPEN_ASSET_FILES = {
+  city: 'assets/open/pixel-city/pixel city_0.png',
+  municipal: 'assets/open/municipal-buildings/municipal buildings_0.png',
+  brick: 'assets/open/brick-apartments/brick_buildings.PNG',
+  brickLarge: 'assets/open/brick-apartments/brick_lg.PNG',
+  roadsA: 'assets/open/streets-and-avenues/spr_roads_1_strip15_1.png',
+  roadsB: 'assets/open/streets-and-avenues/spr_road_2_strip29_2.png',
+};
+
+const ROAD_SEGMENTS = [
+  { x1: 0.2, y1: 0.18, x2: 0.2, y2: 0.86, avenue: false },
+  { x1: 0.38, y1: 0.14, x2: 0.38, y2: 0.88, avenue: true },
+  { x1: 0.62, y1: 0.12, x2: 0.62, y2: 0.9, avenue: true },
+  { x1: 0.82, y1: 0.16, x2: 0.82, y2: 0.86, avenue: false },
+  { x1: 0.08, y1: 0.34, x2: 0.92, y2: 0.34, avenue: false },
+  { x1: 0.1, y1: 0.56, x2: 0.9, y2: 0.56, avenue: true },
+  { x1: 0.12, y1: 0.77, x2: 0.88, y2: 0.77, avenue: false },
+];
+
+const ROAD_TILE_SIZE = 32;
+const ROAD_TILE_LIBRARY = {
+  diagonal: { sheet: 'roadsA', index: 5 },
+  reverse: { sheet: 'roadsA', index: 6 },
+  hub: { sheet: 'roadsA', index: 19 },
+  edge: { sheet: 'roadsA', index: 20 },
+  avenueA: { sheet: 'roadsB', index: 34 },
+  avenueB: { sheet: 'roadsB', index: 35 },
+  capA: { sheet: 'roadsB', index: 40 },
+  capB: { sheet: 'roadsB', index: 41 },
+};
+
+const DISTRICT_SPRITES = {
+  civic: [
+    { sheet: 'municipal', region: [0.04, 0.04, 0.44, 0.9], anchor: [0.08, 0.3, 0.42, 0.56] },
+    { sheet: 'municipal', region: [0.5, 0.08, 0.44, 0.8], anchor: [0.54, 0.36, 0.28, 0.42] },
+  ],
+  residential: [
+    { sheet: 'brickLarge', region: [0.04, 0.06, 0.42, 0.88], anchor: [0.05, 0.24, 0.38, 0.62] },
+    { sheet: 'brick', region: [0.5, 0.08, 0.42, 0.84], anchor: [0.46, 0.3, 0.28, 0.5] },
+    { sheet: 'brick', region: [0.08, 0.1, 0.32, 0.76], anchor: [0.73, 0.36, 0.18, 0.38] },
+  ],
+  utility: [
+    { sheet: 'municipal', region: [0.52, 0.06, 0.42, 0.84], anchor: [0.1, 0.28, 0.3, 0.54] },
+    { sheet: 'city', region: [0.04, 0.54, 0.42, 0.34], anchor: [0.45, 0.38, 0.36, 0.32] },
+  ],
+  commercial: [
+    { sheet: 'city', region: [0.06, 0.06, 0.4, 0.34], anchor: [0.06, 0.28, 0.34, 0.44] },
+    { sheet: 'city', region: [0.48, 0.06, 0.38, 0.34], anchor: [0.42, 0.2, 0.28, 0.52] },
+    { sheet: 'city', region: [0.24, 0.46, 0.26, 0.3], anchor: [0.72, 0.4, 0.16, 0.3] },
+  ],
+  industrial: [
+    { sheet: 'city', region: [0.04, 0.52, 0.4, 0.34], anchor: [0.08, 0.38, 0.34, 0.34] },
+    { sheet: 'city', region: [0.5, 0.52, 0.36, 0.34], anchor: [0.44, 0.3, 0.3, 0.38] },
+    { sheet: 'roadsB', region: [0.42, 0.66, 0.26, 0.18], anchor: [0.74, 0.56, 0.16, 0.18] },
+  ],
+  park: [
+    { sheet: 'municipal', region: [0.08, 0.18, 0.22, 0.24], anchor: [0.38, 0.36, 0.18, 0.18] },
+  ],
+  mixed: [
+    { sheet: 'brick', region: [0.08, 0.1, 0.34, 0.76], anchor: [0.08, 0.28, 0.26, 0.48] },
+    { sheet: 'city', region: [0.48, 0.08, 0.34, 0.32], anchor: [0.4, 0.22, 0.3, 0.5] },
+    { sheet: 'brick', region: [0.54, 0.18, 0.26, 0.52], anchor: [0.74, 0.4, 0.15, 0.28] },
+  ],
+};
+
+const ASSET_ICON_SPRITES = {
+  'civic-hall': { sheet: 'municipal', region: [0.06, 0.06, 0.34, 0.52] },
+  'north-terraces': { sheet: 'brick', region: [0.5, 0.08, 0.34, 0.64] },
+  'harbor-grid': { sheet: 'roadsB', region: [0.4, 0.5, 0.2, 0.2] },
+  'market-exchange': { sheet: 'city', region: [0.5, 0.06, 0.24, 0.22] },
+  'park-greenhouses': { sheet: 'municipal', region: [0.36, 0.1, 0.18, 0.22] },
+  'industry-foundry': { sheet: 'city', region: [0.52, 0.52, 0.26, 0.28] },
+  'south-crossings': { sheet: 'brickLarge', region: [0.06, 0.1, 0.28, 0.68] },
+};
+
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -307,6 +382,12 @@ let state = createInitialState();
 let interactiveTargets = [];
 let resizeQueued = false;
 let frameHandle = 0;
+let spriteLoadPromise = null;
+const spriteLibrary = {
+  ready: false,
+  failed: false,
+  images: {},
+};
 
 function mergeState(base, incoming) {
   return {
@@ -1165,51 +1246,213 @@ function strokeRoundedRect(context, x, y, width, height, radius, strokeStyle, li
   context.stroke();
 }
 
+function createWorkingCanvas(width, height) {
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  return canvas;
+}
+
+function loadImageAsset(src, whiteToAlpha = false) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      if (!whiteToAlpha) {
+        resolve(image);
+        return;
+      }
+
+      const canvas = createWorkingCanvas(image.naturalWidth, image.naturalHeight);
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+      if (!context) {
+        resolve(image);
+        return;
+      }
+
+      context.drawImage(image, 0, 0);
+      const data = context.getImageData(0, 0, canvas.width, canvas.height);
+      for (let index = 0; index < data.data.length; index += 4) {
+        const red = data.data[index];
+        const green = data.data[index + 1];
+        const blue = data.data[index + 2];
+        if (red > 244 && green > 244 && blue > 244) {
+          data.data[index + 3] = 0;
+        }
+      }
+      context.putImageData(data, 0, 0);
+      resolve(canvas);
+    };
+    image.onerror = () => reject(new Error(`Failed to load ${src}`));
+    image.src = src;
+  });
+}
+
+function ensureSpriteLibrary() {
+  if (spriteLibrary.ready || spriteLoadPromise) return;
+
+  spriteLoadPromise = Promise.all([
+    loadImageAsset(OPEN_ASSET_FILES.city, true),
+    loadImageAsset(OPEN_ASSET_FILES.municipal, true),
+    loadImageAsset(OPEN_ASSET_FILES.brick, true),
+    loadImageAsset(OPEN_ASSET_FILES.brickLarge, true),
+    loadImageAsset(OPEN_ASSET_FILES.roadsA),
+    loadImageAsset(OPEN_ASSET_FILES.roadsB),
+  ])
+    .then(([city, municipal, brick, brickLarge, roadsA, roadsB]) => {
+      spriteLibrary.images = { city, municipal, brick, brickLarge, roadsA, roadsB };
+      spriteLibrary.ready = true;
+      paintCityMap();
+    })
+    .catch(() => {
+      spriteLibrary.failed = true;
+    });
+}
+
+function spriteSourceRect(image, region) {
+  return {
+    sx: Math.floor(image.width * region[0]),
+    sy: Math.floor(image.height * region[1]),
+    sw: Math.max(1, Math.floor(image.width * region[2])),
+    sh: Math.max(1, Math.floor(image.height * region[3])),
+  };
+}
+
+function roadTileRect(index) {
+  const columns = 6;
+  return {
+    sx: (index % columns) * ROAD_TILE_SIZE,
+    sy: Math.floor(index / columns) * ROAD_TILE_SIZE,
+    sw: ROAD_TILE_SIZE,
+    sh: ROAD_TILE_SIZE,
+  };
+}
+
+function roadTileRectWide(index) {
+  const columns = 10;
+  return {
+    sx: (index % columns) * ROAD_TILE_SIZE,
+    sy: Math.floor(index / columns) * ROAD_TILE_SIZE,
+    sw: ROAD_TILE_SIZE,
+    sh: ROAD_TILE_SIZE,
+  };
+}
+
+function drawSpriteRegion(context, image, region, dx, dy, dw, dh, alpha = 1) {
+  if (!image) return;
+  const { sx, sy, sw, sh } = spriteSourceRect(image, region);
+  context.save();
+  context.imageSmoothingEnabled = false;
+  context.globalAlpha = alpha;
+  context.drawImage(image, sx, sy, sw, sh, dx, dy, dw, dh);
+  context.restore();
+}
+
+function drawRoadTile(context, tile, dx, dy, size, rotation = 0, alpha = 1) {
+  const image = spriteLibrary.images[tile.sheet];
+  if (!image) return;
+  const source = tile.sheet === 'roadsA' ? roadTileRect(tile.index) : roadTileRectWide(tile.index);
+  context.save();
+  context.translate(dx, dy);
+  context.rotate(rotation);
+  context.imageSmoothingEnabled = false;
+  context.globalAlpha = alpha;
+  context.drawImage(
+    image,
+    source.sx,
+    source.sy,
+    source.sw,
+    source.sh,
+    -size / 2,
+    -size / 2,
+    size,
+    size,
+  );
+  context.restore();
+}
+
 function districtColor(type) {
   const colors = {
-    civic: ['#7ad4ff', '#295f7f'],
-    residential: ['#8fe0d0', '#264d4b'],
-    utility: ['#6bc4eb', '#1f435d'],
-    commercial: ['#ffd57c', '#6d5130'],
-    industrial: ['#f19e65', '#633d21'],
-    park: ['#85c983', '#284d31'],
-    mixed: ['#d79eff', '#5c3b67'],
+    civic: ['#6f98aa', '#24343d'],
+    residential: ['#698f98', '#202d34'],
+    utility: ['#64879e', '#1c2a35'],
+    commercial: ['#9a7f54', '#35281b'],
+    industrial: ['#8f6a50', '#322117'],
+    park: ['#54795a', '#203024'],
+    mixed: ['#7d6f8e', '#2a2434'],
   };
 
   return colors[type] ?? colors.mixed;
 }
 
 function drawRoadNetwork(context, width, height) {
-  const roads = [
-    [0.2, 0.18, 0.2, 0.86],
-    [0.38, 0.14, 0.38, 0.88],
-    [0.62, 0.12, 0.62, 0.9],
-    [0.82, 0.16, 0.82, 0.86],
-    [0.08, 0.34, 0.92, 0.34],
-    [0.1, 0.56, 0.9, 0.56],
-    [0.12, 0.77, 0.88, 0.77],
-  ];
+  ROAD_SEGMENTS.forEach((road) => {
+    const x1 = road.x1 * width;
+    const y1 = road.y1 * height;
+    const x2 = road.x2 * width;
+    const y2 = road.y2 * height;
+    const axisAligned = Math.abs(x1 - x2) < 1 || Math.abs(y1 - y2) < 1;
+    const roadWidth = road.avenue ? Math.max(24, width * 0.022) : Math.max(16, width * 0.015);
 
-  context.lineCap = 'round';
-  context.strokeStyle = 'rgba(190, 222, 240, 0.22)';
-  context.lineWidth = Math.max(6, width * 0.01);
-  roads.forEach(([x1, y1, x2, y2]) => {
+    context.lineCap = 'round';
+    context.strokeStyle = road.avenue ? 'rgba(23, 29, 35, 0.96)' : 'rgba(18, 24, 30, 0.9)';
+    context.lineWidth = roadWidth;
     context.beginPath();
-    context.moveTo(x1 * width, y1 * height);
-    context.lineTo(x2 * width, y2 * height);
+    context.moveTo(x1, y1);
+    context.lineTo(x2, y2);
     context.stroke();
+
+    context.strokeStyle = road.avenue ? 'rgba(101, 108, 115, 0.62)' : 'rgba(86, 94, 104, 0.58)';
+    context.lineWidth = Math.max(roadWidth * 0.8, 12);
+    context.beginPath();
+    context.moveTo(x1, y1);
+    context.lineTo(x2, y2);
+    context.stroke();
+
+    if (axisAligned) {
+      context.strokeStyle = 'rgba(251, 232, 170, 0.45)';
+      context.lineWidth = road.avenue ? 2.6 : 1.6;
+      context.setLineDash([10, 12]);
+      context.beginPath();
+      context.moveTo(x1, y1);
+      context.lineTo(x2, y2);
+      context.stroke();
+      context.setLineDash([]);
+    }
+
+    if (!spriteLibrary.ready) return;
+
+    const distance = Math.hypot(x2 - x1, y2 - y1);
+    const steps = Math.max(2, Math.floor(distance / (roadWidth * 0.8)));
+    const angle = Math.atan2(y2 - y1, x2 - x1);
+    const tileA = road.avenue ? ROAD_TILE_LIBRARY.avenueA : ROAD_TILE_LIBRARY.diagonal;
+    const tileB = road.avenue ? ROAD_TILE_LIBRARY.avenueB : ROAD_TILE_LIBRARY.reverse;
+    for (let step = 0; step <= steps; step += 1) {
+      const t = step / Math.max(steps, 1);
+      const tileX = lerp(x1, x2, t);
+      const tileY = lerp(y1, y2, t);
+      const tile = step % 2 === 0 ? tileA : tileB;
+      drawRoadTile(context, tile, tileX, tileY, roadWidth * 1.25, angle, 0.68);
+    }
+
+    drawRoadTile(context, road.avenue ? ROAD_TILE_LIBRARY.capA : ROAD_TILE_LIBRARY.edge, x1, y1, roadWidth * 1.15, angle, 0.78);
+    drawRoadTile(context, road.avenue ? ROAD_TILE_LIBRARY.capB : ROAD_TILE_LIBRARY.edge, x2, y2, roadWidth * 1.15, angle + Math.PI, 0.78);
   });
 
-  context.setLineDash([10, 12]);
-  context.strokeStyle = 'rgba(255, 244, 196, 0.28)';
-  context.lineWidth = Math.max(1.2, width * 0.002);
-  roads.forEach(([x1, y1, x2, y2]) => {
-    context.beginPath();
-    context.moveTo(x1 * width, y1 * height);
-    context.lineTo(x2 * width, y2 * height);
-    context.stroke();
+  if (!spriteLibrary.ready) return;
+
+  ROAD_SEGMENTS.forEach((vertical) => {
+    ROAD_SEGMENTS.forEach((horizontal) => {
+      const isVertical = Math.abs(vertical.x1 - vertical.x2) < 0.001;
+      const isHorizontal = Math.abs(horizontal.y1 - horizontal.y2) < 0.001;
+      if (!isVertical || !isHorizontal) return;
+      const x = vertical.x1 * width;
+      const y = horizontal.y1 * height;
+      if (y < Math.min(vertical.y1, vertical.y2) * height || y > Math.max(vertical.y1, vertical.y2) * height) return;
+      if (x < Math.min(horizontal.x1, horizontal.x2) * width || x > Math.max(horizontal.x1, horizontal.x2) * width) return;
+      const size = (vertical.avenue || horizontal.avenue) ? Math.max(28, width * 0.026) : Math.max(22, width * 0.02);
+      drawRoadTile(context, ROAD_TILE_LIBRARY.hub, x, y, size, 0, 0.82);
+    });
   });
-  context.setLineDash([]);
 }
 
 function drawWaterfront(context, width, height, palette) {
@@ -1223,9 +1466,43 @@ function drawWaterfront(context, width, height, palette) {
   context.lineTo(0, height);
   context.closePath();
   context.fill();
+
+  if (!spriteLibrary.ready) return;
+
+  for (let pier = 0; pier < 5; pier += 1) {
+    const px = width * (0.065 + pier * 0.008);
+    const py = height * (0.24 + pier * 0.12);
+    drawRoadTile(context, ROAD_TILE_LIBRARY.edge, px, py, Math.max(16, width * 0.012), Math.PI / 2, 0.55);
+  }
 }
 
-function drawDistrictBuildings(context, district, frame) {
+function drawDistrictGround(context, district, frame) {
+  const gridGap = Math.max(12, frame.w * 0.08);
+  context.fillStyle = district.type === 'park' ? 'rgba(73, 110, 78, 0.8)' : 'rgba(31, 38, 45, 0.58)';
+  context.fillRect(frame.x, frame.y, frame.w, frame.h);
+
+  context.strokeStyle = district.type === 'park' ? 'rgba(128, 186, 129, 0.24)' : 'rgba(255, 255, 255, 0.06)';
+  context.lineWidth = 1;
+  for (let x = frame.x + gridGap * 0.5; x < frame.x + frame.w; x += gridGap) {
+    context.beginPath();
+    context.moveTo(x, frame.y);
+    context.lineTo(x, frame.y + frame.h);
+    context.stroke();
+  }
+  for (let y = frame.y + gridGap * 0.45; y < frame.y + frame.h; y += gridGap * 0.78) {
+    context.beginPath();
+    context.moveTo(frame.x, y);
+    context.lineTo(frame.x + frame.w, y);
+    context.stroke();
+  }
+
+  if (district.type === 'park') {
+    context.fillStyle = 'rgba(154, 204, 132, 0.12)';
+    fillRoundedRect(context, frame.x + frame.w * 0.08, frame.y + frame.h * 0.12, frame.w * 0.84, frame.h * 0.7, 18, context.fillStyle);
+  }
+}
+
+function drawDistrictFallback(context, district, frame) {
   const columns = district.type === 'park' ? 3 : district.type === 'industrial' ? 4 : 5;
   const rows = district.type === 'park' ? 2 : 3;
   const gutter = frame.w * 0.04;
@@ -1247,37 +1524,80 @@ function drawDistrictBuildings(context, district, frame) {
         context.beginPath();
         context.arc(x + cellWidth * 0.5, y + buildingHeight * 0.55, cellWidth * 0.42, 0, Math.PI * 2);
         context.fill();
-        context.fillStyle = 'rgba(66, 44, 28, 0.9)';
-        context.fillRect(x + cellWidth * 0.45, y + buildingHeight * 0.55, cellWidth * 0.1, buildingHeight * 0.45);
         continue;
       }
 
-      const alpha = district.type === 'utility' ? 0.88 : 0.94;
-      context.fillStyle = `rgba(17, 25, 32, ${alpha})`;
+      context.fillStyle = 'rgba(17, 25, 32, 0.9)';
       fillRoundedRect(context, x, y, cellWidth, buildingHeight, Math.max(4, frame.w * 0.01), context.fillStyle);
+    }
+  }
+}
 
-      const windowRows = Math.max(2, Math.floor(buildingHeight / 16));
-      const windowCols = Math.max(2, Math.floor(cellWidth / 10));
-      const lit = district.type === 'industrial' ? 'rgba(255, 188, 104, 0.52)' : 'rgba(174, 229, 255, 0.52)';
+function drawDistrictSprites(context, district, frame) {
+  const spriteDefs = DISTRICT_SPRITES[district.type] ?? DISTRICT_SPRITES.mixed;
+  if (!spriteLibrary.ready) {
+    drawDistrictFallback(context, district, frame);
+    return;
+  }
 
-      for (let windowRow = 0; windowRow < windowRows; windowRow += 1) {
-        for (let windowCol = 0; windowCol < windowCols; windowCol += 1) {
-          if ((windowRow + windowCol + seed + state.sim.tick) % 3 === 0) continue;
-          const wx = x + cellWidth * 0.16 + windowCol * ((cellWidth * 0.68) / windowCols);
-          const wy = y + buildingHeight * 0.1 + windowRow * ((buildingHeight * 0.72) / windowRows);
-          context.fillStyle = lit;
-          context.fillRect(wx, wy, Math.max(1.6, cellWidth * 0.08), Math.max(1.8, buildingHeight * 0.04));
-        }
-      }
+  if (district.type === 'park') {
+    for (let patch = 0; patch < 7; patch += 1) {
+      const x = frame.x + frame.w * (0.08 + (patch % 4) * 0.2);
+      const y = frame.y + frame.h * (0.3 + Math.floor(patch / 4) * 0.24);
+      context.fillStyle = patch % 2 === 0 ? 'rgba(116, 176, 98, 0.92)' : 'rgba(87, 139, 83, 0.88)';
+      context.beginPath();
+      context.arc(x, y, frame.w * 0.07, 0, Math.PI * 2);
+      context.fill();
+      context.fillStyle = 'rgba(68, 48, 35, 0.7)';
+      context.fillRect(x - frame.w * 0.008, y, frame.w * 0.016, frame.h * 0.08);
+    }
+  }
 
-      if (district.type === 'utility' && col === columns - 1) {
-        context.strokeStyle = 'rgba(149, 233, 255, 0.65)';
-        context.lineWidth = 2;
-        context.beginPath();
-        context.moveTo(x + cellWidth * 0.5, y);
-        context.lineTo(x + cellWidth * 0.5, y - frame.h * 0.12);
-        context.stroke();
-      }
+  spriteDefs.forEach((spriteDef, index) => {
+    const image = spriteLibrary.images[spriteDef.sheet];
+    if (!image) return;
+    const [ax, ay, aw, ah] = spriteDef.anchor;
+    const drift = (state.sim.tick + index * 3) % 6;
+    const dx = frame.x + frame.w * ax;
+    const dy = frame.y + frame.h * ay - drift * 0.15;
+    const dw = frame.w * aw * lerp(0.94, 1.06, district.development / 1.4);
+    const dh = frame.h * ah * lerp(0.92, 1.08, district.condition);
+    drawSpriteRegion(context, image, spriteDef.region, dx, dy, dw, dh, 0.92);
+  });
+
+  if (district.type === 'commercial' || district.type === 'mixed') {
+    context.fillStyle = 'rgba(255, 209, 117, 0.16)';
+    for (let stripe = 0; stripe < 5; stripe += 1) {
+      fillRoundedRect(
+        context,
+        frame.x + frame.w * (0.08 + stripe * 0.17),
+        frame.y + frame.h * 0.72,
+        frame.w * 0.1,
+        frame.h * 0.05,
+        6,
+        context.fillStyle,
+      );
+    }
+  }
+
+  if (district.type === 'utility') {
+    context.strokeStyle = 'rgba(120, 222, 255, 0.6)';
+    context.lineWidth = 2;
+    context.beginPath();
+    context.moveTo(frame.x + frame.w * 0.18, frame.y + frame.h * 0.78);
+    context.lineTo(frame.x + frame.w * 0.82, frame.y + frame.h * 0.78);
+    context.lineTo(frame.x + frame.w * 0.82, frame.y + frame.h * 0.22);
+    context.stroke();
+  }
+
+  if (district.type === 'industrial') {
+    for (let stack = 0; stack < 3; stack += 1) {
+      const x = frame.x + frame.w * (0.2 + stack * 0.22);
+      const y = frame.y + frame.h * 0.28 - stack * 4;
+      context.fillStyle = 'rgba(94, 100, 108, 0.22)';
+      context.beginPath();
+      context.arc(x, y, frame.w * 0.06, 0, Math.PI * 2);
+      context.fill();
     }
   }
 }
@@ -1304,10 +1624,16 @@ function drawDistrict(context, district, width, height) {
     district.growthTone === 'warn' ? 1.2 : 2,
   );
 
-  context.fillStyle = 'rgba(255, 255, 255, 0.05)';
-  fillRoundedRect(context, x + w * 0.04, y + h * 0.06, w * 0.92, h * 0.88, Math.max(12, width * 0.015), context.fillStyle);
+  const inner = { x: x + w * 0.04, y: y + h * 0.08, w: w * 0.92, h: h * 0.8 };
+  context.fillStyle = 'rgba(255, 255, 255, 0.04)';
+  fillRoundedRect(context, inner.x, inner.y, inner.w, inner.h, Math.max(12, width * 0.015), context.fillStyle);
 
-  drawDistrictBuildings(context, district, { x: x + w * 0.05, y: y + h * 0.18, w: w * 0.9, h: h * 0.72 });
+  context.save();
+  roundedRect(context, inner.x, inner.y, inner.w, inner.h, Math.max(12, width * 0.015));
+  context.clip();
+  drawDistrictGround(context, district, inner);
+  drawDistrictSprites(context, district, inner);
+  context.restore();
 
   const selection = selectionMatches('district', district.key);
   const hovered = hoverMatches('district', district.key);
@@ -1433,6 +1759,7 @@ function drawMap(context, viewModel, width, height) {
 }
 
 function paintCityMap() {
+  ensureSpriteLibrary();
   const canvas = document.querySelector('[data-city-canvas]');
   if (!canvas) return;
 
@@ -1511,25 +1838,35 @@ function drawAssetMarker(context, asset, district, width, height, index) {
   const anchor = assetAnchor(district, index);
   const x = anchor.x * width;
   const y = anchor.y * height;
-  const radius = Math.max(14, width * 0.015);
+  const radius = Math.max(16, width * 0.016);
   const selected = selectionMatches('asset', asset.key);
   const hovered = hoverMatches('asset', asset.key);
   const tone = assetActionKey(asset);
   const fill =
-    tone === 'housing' ? 'rgba(152, 226, 166, 0.92)'
-    : tone === 'grid' ? 'rgba(117, 214, 255, 0.92)'
-    : tone === 'industry' ? 'rgba(255, 213, 138, 0.92)'
-    : 'rgba(234, 241, 255, 0.9)';
+    tone === 'housing' ? 'rgba(152, 226, 166, 0.86)'
+    : tone === 'grid' ? 'rgba(117, 214, 255, 0.84)'
+    : tone === 'industry' ? 'rgba(255, 213, 138, 0.84)'
+    : 'rgba(234, 241, 255, 0.84)';
 
-  context.fillStyle = 'rgba(6, 12, 18, 0.82)';
-  context.beginPath();
-  context.arc(x, y, radius + 4, 0, Math.PI * 2);
-  context.fill();
-
+  context.save();
+  context.translate(x, y);
+  context.rotate(Math.PI / 4);
+  context.fillStyle = 'rgba(5, 10, 15, 0.92)';
+  fillRoundedRect(context, -radius - 7, -radius - 7, (radius + 7) * 2, (radius + 7) * 2, 8, context.fillStyle);
   context.fillStyle = fill;
-  context.beginPath();
-  context.arc(x, y, radius, 0, Math.PI * 2);
-  context.fill();
+  fillRoundedRect(context, -radius - 2, -radius - 2, (radius + 2) * 2, (radius + 2) * 2, 7, context.fillStyle);
+  context.restore();
+
+  const icon = ASSET_ICON_SPRITES[asset.key];
+  const iconImage = icon ? spriteLibrary.images[icon.sheet] : null;
+  if (icon && iconImage) {
+    drawSpriteRegion(context, iconImage, icon.region, x - radius * 0.8, y - radius * 1.02, radius * 1.6, radius * 1.35, 0.98);
+  } else {
+    context.fillStyle = '#02131b';
+    context.beginPath();
+    context.arc(x, y - 1, radius * 0.45, 0, Math.PI * 2);
+    context.fill();
+  }
 
   if (selected || hovered) {
     context.strokeStyle = selected ? '#f4fbff' : 'rgba(255, 255, 255, 0.7)';
@@ -1542,7 +1879,7 @@ function drawAssetMarker(context, asset, district, width, height, index) {
   context.fillStyle = '#02131b';
   context.font = `700 ${Math.max(11, width * 0.011)}px "Trebuchet MS", sans-serif`;
   context.textAlign = 'center';
-  context.fillText(`L${asset.level}`, x, y + 4);
+  context.fillText(`L${asset.level}`, x, y + radius * 1.05);
   context.textAlign = 'left';
 
   interactiveTargets.push({

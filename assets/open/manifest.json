@@ -1,0 +1,48 @@
+[
+  {
+    "slug": "pixel-city",
+    "title": "Pixel city",
+    "license": "CC0",
+    "source_page": "https://opengameart.org/content/pixel-city",
+    "recommended_use": "Primary isometric city base / building silhouettes",
+    "downloaded_files": [
+      "pixel city.png",
+      "pixel city_0.png"
+    ]
+  },
+  {
+    "slug": "municipal-buildings",
+    "title": "Pixel City - Municipal buildings",
+    "license": "CC0",
+    "source_page": "https://opengameart.org/content/pixel-city-municipal-buildings",
+    "recommended_use": "Civic/service structures: city hall, utility/service landmarks",
+    "downloaded_files": [
+      "municipal buildings_0.png",
+      "preview_173.png"
+    ]
+  },
+  {
+    "slug": "brick-apartments",
+    "title": "Pixel city - brick apartments",
+    "license": "CC0",
+    "source_page": "https://opengameart.org/content/pixel-city-brick-apartments",
+    "recommended_use": "Residential density and apartment blocks",
+    "downloaded_files": [
+      "brick_buildings.PNG",
+      "brick_lg.PNG"
+    ]
+  },
+  {
+    "slug": "streets-and-avenues",
+    "title": "Pixel Art Street and Avenue",
+    "license": "CC0",
+    "source_page": "https://opengameart.org/content/pixel-art-street-and-avenue",
+    "recommended_use": "Road network and intersections",
+    "downloaded_files": [
+      "spr_roads_1_strip15_1.png",
+      "spr_road_2_strip29_2.png",
+      "example_0.jpg",
+      "example2.jpg"
+    ]
+  }
+]
