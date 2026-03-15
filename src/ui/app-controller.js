@@ -4,6 +4,45 @@ export function createAppController({ app, store, engine, renderer }) {
   let boundCanvas = null;
   let canvasHandlers = null;
 
+  function normalizedWheelDelta(event) {
+    if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) return event.deltaY * 16;
+    if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) return event.deltaY * window.innerHeight;
+    return event.deltaY;
+  }
+
+  function pointInsideCanvas(event, canvas) {
+    const rect = canvas.getBoundingClientRect();
+    return (
+      event.clientX >= rect.left
+      && event.clientX <= rect.right
+      && event.clientY >= rect.top
+      && event.clientY <= rect.bottom
+    );
+  }
+
+  function wheelTargetsPanel(event) {
+    return event.target instanceof Element && Boolean(event.target.closest('.floating-panel, .inspector-column'));
+  }
+
+  function zoomFromWheelEvent(event, canvas) {
+    if (event.defaultPrevented || !canvas || wheelTargetsPanel(event) || !pointInsideCanvas(event, canvas)) {
+      return false;
+    }
+
+    const delta = normalizedWheelDelta(event);
+    if (!delta) return false;
+
+    event.preventDefault();
+    const zoomFactor = Math.exp(-delta * 0.0022);
+    const point = renderer.canvasPoint(event, canvas);
+    return renderer.setZoomLevel(
+      store.getState().ui.zoom * zoomFactor,
+      point,
+      canvas.clientWidth,
+      canvas.clientHeight,
+    );
+  }
+
   function bindCanvas() {
     const canvas = renderer.getCanvas();
     if (!canvas || canvas === boundCanvas) return;
@@ -14,6 +53,7 @@ export function createAppController({ app, store, engine, renderer }) {
       boundCanvas.removeEventListener('pointerleave', canvasHandlers.pointerleave);
       boundCanvas.removeEventListener('pointerup', canvasHandlers.pointerup);
       boundCanvas.removeEventListener('pointercancel', canvasHandlers.pointercancel);
+      boundCanvas.removeEventListener('wheel', canvasHandlers.wheel);
     }
 
     canvas.style.cursor = 'grab';
@@ -83,6 +123,9 @@ export function createAppController({ app, store, engine, renderer }) {
         cameraDrag = null;
         canvas.style.cursor = 'grab';
       },
+      wheel(event) {
+        zoomFromWheelEvent(event, canvas);
+      },
     };
 
     canvas.addEventListener('pointerdown', canvasHandlers.pointerdown);
@@ -90,6 +133,7 @@ export function createAppController({ app, store, engine, renderer }) {
     canvas.addEventListener('pointerleave', canvasHandlers.pointerleave);
     canvas.addEventListener('pointerup', canvasHandlers.pointerup);
     canvas.addEventListener('pointercancel', canvasHandlers.pointercancel);
+    canvas.addEventListener('wheel', canvasHandlers.wheel, { passive: false });
     boundCanvas = canvas;
   }
 
@@ -117,6 +161,12 @@ export function createAppController({ app, store, engine, renderer }) {
       }
     });
   });
+
+  window.addEventListener('wheel', (event) => {
+    const canvas = renderer.getCanvas();
+    if (!canvas) return;
+    zoomFromWheelEvent(event, canvas);
+  }, { passive: false });
 
   return {
     bindCanvas,

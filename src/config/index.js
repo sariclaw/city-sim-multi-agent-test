@@ -2,6 +2,9 @@ export const SEASONS = ['Spring', 'Summer', 'Autumn', 'Winter'];
 export const ACTION_LIMIT = 2;
 export const LOG_LIMIT = 10;
 export const TICKS_PER_SEASON = 6;
+export const MAP_ZOOM_DEFAULT = 1;
+export const MAP_ZOOM_MIN = 0.7;
+export const MAP_ZOOM_MAX = 1.9;
 export const SPEED_OPTIONS = [
   { label: '1x', value: 1, tickMs: 1000 },
   { label: '2x', value: 2, tickMs: 550 },

@@ -3,6 +3,7 @@ import {
   ASSET_DEFINITIONS,
   DISTRICT_LAYOUT,
   LOG_LIMIT,
+  MAP_ZOOM_DEFAULT,
   SPEED_OPTIONS,
   TICKS_PER_SEASON,
 } from '../config/index.js';
@@ -56,6 +57,7 @@ export function createInitialState() {
       selection: { kind: 'district', key: 'civic' },
       hoveredTarget: null,
       camera: { x: 0, y: 0 },
+      zoom: MAP_ZOOM_DEFAULT,
     },
     city: {
       resources: {
@@ -101,6 +103,7 @@ export function mergeState(base, incoming) {
         ...(base.ui.camera ?? { x: 0, y: 0 }),
         ...(incoming.ui?.camera ?? {}),
       },
+      zoom: incoming.ui?.zoom ?? base.ui.zoom ?? MAP_ZOOM_DEFAULT,
     },
     city: {
       ...base.city,

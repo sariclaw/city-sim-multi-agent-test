@@ -8,11 +8,13 @@ import {
 import { createSpriteLibrary } from './sprite-library.js';
 import {
   buildWorldRoadGraph,
+  clampZoom,
   districtIsoFootprint,
   districtScreenFrame,
   hasAdjacentRoad,
   isoProject,
   isDistrictCell,
+  screenToIsoGrid,
   isWaterCell,
   pointInPolygon,
   terrainMetrics,
@@ -661,7 +663,7 @@ export function createMapRenderer({ store, engine }) {
     interactiveTargets = [];
     const { palette, districts } = viewModel;
     const state = getState();
-    const metrics = terrainMetrics(width, height, state.ui.camera, WORLD_LAYOUT);
+    const metrics = terrainMetrics(width, height, state.ui.camera, WORLD_LAYOUT, state.ui.zoom);
     const sky = context.createLinearGradient(0, 0, 0, height);
     sky.addColorStop(0, palette.skyTop);
     sky.addColorStop(0.42, palette.skyBottom);
@@ -720,20 +722,63 @@ export function createMapRenderer({ store, engine }) {
     const width = canvas.clientWidth;
     const height = canvas.clientHeight;
     const state = getState();
-    const clamped = terrainMetrics(width, height, state.ui.camera, WORLD_LAYOUT).camera;
-    if (clamped.x === state.ui.camera.x && clamped.y === state.ui.camera.y) return false;
+    const zoom = clampZoom(state.ui.zoom);
+    const clamped = terrainMetrics(width, height, state.ui.camera, WORLD_LAYOUT, zoom).camera;
+    if (clamped.x === state.ui.camera.x && clamped.y === state.ui.camera.y && zoom === state.ui.zoom) return false;
     store.update((nextState) => {
       nextState.ui.camera = clamped;
+      nextState.ui.zoom = zoom;
     }, { reason: 'camera' });
     return true;
   }
 
   function setCameraPosition(nextCamera, width, height) {
     const state = getState();
-    const clamped = terrainMetrics(width, height, nextCamera, WORLD_LAYOUT).camera;
-    if (clamped.x === state.ui.camera.x && clamped.y === state.ui.camera.y) return false;
+    const zoom = clampZoom(state.ui.zoom);
+    const clamped = terrainMetrics(width, height, nextCamera, WORLD_LAYOUT, zoom).camera;
+    if (clamped.x === state.ui.camera.x && clamped.y === state.ui.camera.y && zoom === state.ui.zoom) return false;
     store.update((nextState) => {
       nextState.ui.camera = clamped;
+      nextState.ui.zoom = zoom;
+    }, { reason: 'camera' });
+    return true;
+  }
+
+  function setZoomLevel(nextZoom, anchorPoint, width, height) {
+    if (!width || !height) return false;
+
+    const state = getState();
+    const zoom = clampZoom(nextZoom);
+    const currentZoom = clampZoom(state.ui.zoom);
+    const focusPoint = anchorPoint ?? { x: width * 0.5, y: height * 0.5 };
+    const currentMetrics = terrainMetrics(width, height, state.ui.camera, WORLD_LAYOUT, currentZoom);
+    const worldPoint = screenToIsoGrid(focusPoint.x, focusPoint.y, currentMetrics);
+    const nextMetrics = terrainMetrics(width, height, currentMetrics.camera, WORLD_LAYOUT, zoom);
+    const baseProjectedPoint = isoProject(
+      worldPoint.x,
+      worldPoint.y,
+      nextMetrics.baseOriginX,
+      nextMetrics.baseOriginY,
+      nextMetrics.tileWidth,
+      nextMetrics.tileHeight,
+    );
+    const desiredCamera = {
+      x: focusPoint.x - baseProjectedPoint.x,
+      y: focusPoint.y - baseProjectedPoint.y,
+    };
+    const clampedCamera = terrainMetrics(width, height, desiredCamera, WORLD_LAYOUT, zoom).camera;
+
+    if (
+      zoom === state.ui.zoom
+      && clampedCamera.x === state.ui.camera.x
+      && clampedCamera.y === state.ui.camera.y
+    ) {
+      return false;
+    }
+
+    store.update((nextState) => {
+      nextState.ui.zoom = zoom;
+      nextState.ui.camera = clampedCamera;
     }, { reason: 'camera' });
     return true;
   }
@@ -773,6 +818,7 @@ export function createMapRenderer({ store, engine }) {
     paint,
     resize,
     setCameraPosition,
+    setZoomLevel,
     syncCameraToCanvas,
   };
 }

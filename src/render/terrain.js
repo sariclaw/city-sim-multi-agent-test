@@ -1,7 +1,21 @@
-import { WORLD_LAYOUT } from '../config/index.js';
+import {
+  MAP_ZOOM_DEFAULT,
+  MAP_ZOOM_MAX,
+  MAP_ZOOM_MIN,
+  WORLD_LAYOUT,
+} from '../config/index.js';
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+export function clampZoom(zoom = MAP_ZOOM_DEFAULT) {
+  const numericZoom = Number(zoom);
+  return clamp(
+    Number.isFinite(numericZoom) ? numericZoom : MAP_ZOOM_DEFAULT,
+    MAP_ZOOM_MIN,
+    MAP_ZOOM_MAX,
+  );
 }
 
 function roadCellKey(x, y) {
@@ -140,6 +154,15 @@ export function isoProject(gridX, gridY, originX, originY, tileWidth, tileHeight
   };
 }
 
+export function screenToIsoGrid(screenX, screenY, metrics) {
+  const localX = screenX - metrics.originX;
+  const localY = screenY - metrics.originY;
+  return {
+    x: localX / metrics.tileWidth + localY / metrics.tileHeight,
+    y: localY / metrics.tileHeight - localX / metrics.tileWidth,
+  };
+}
+
 export function worldScreenBounds(cols, rows, originX, originY, tileWidth, tileHeight) {
   const corners = [
     isoProject(0, 0, originX, originY, tileWidth, tileHeight),
@@ -183,12 +206,19 @@ export function clampCamera(camera, bounds) {
   };
 }
 
-export function terrainMetrics(width, height, camera = { x: 0, y: 0 }, worldLayout = WORLD_LAYOUT) {
+export function terrainMetrics(
+  width,
+  height,
+  camera = { x: 0, y: 0 },
+  worldLayout = WORLD_LAYOUT,
+  zoom = MAP_ZOOM_DEFAULT,
+) {
   const cols = worldLayout.cols;
   const rows = worldLayout.rows;
   const safeArea = worldSafeArea(width, height, worldLayout);
   const safeWidth = Math.max(420, width - safeArea.left - safeArea.right);
-  const tileWidth = Math.max(34, Math.min(58, safeWidth / ((cols + rows) * 0.56)));
+  const baseTileWidth = Math.max(34, Math.min(58, safeWidth / ((cols + rows) * 0.56)));
+  const tileWidth = baseTileWidth * clampZoom(zoom);
   const tileHeight = tileWidth * 0.5;
   const zeroBounds = worldScreenBounds(cols, rows, 0, 0, tileWidth, tileHeight);
   const safeCenterX = safeArea.left + (width - safeArea.left - safeArea.right) * 0.5;

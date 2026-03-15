@@ -3,6 +3,9 @@ import {
   ACTIONS,
   DISTRICT_MODELS,
   LOG_LIMIT,
+  MAP_ZOOM_DEFAULT,
+  MAP_ZOOM_MAX,
+  MAP_ZOOM_MIN,
   SEASONS,
   SPEED_OPTIONS,
   TICKS_PER_SEASON,
@@ -543,6 +546,12 @@ export function createEngine(store) {
     state.sim.lastFrameMs = Math.max(0, state.sim.lastFrameMs || 0);
     state.sim.seasonProgress = clamp(state.sim.seasonTick / state.sim.seasonLength, 0, 1);
     state.ui.hoveredTarget = state.ui.hoveredTarget ?? null;
+    const numericZoom = Number(state.ui.zoom);
+    state.ui.zoom = clamp(
+      Number.isFinite(numericZoom) ? numericZoom : MAP_ZOOM_DEFAULT,
+      MAP_ZOOM_MIN,
+      MAP_ZOOM_MAX,
+    );
     recomputeDerivedState();
 
     if (!getDistrictByKey(state.ui.selection.key) && !getAssetByKey(state.ui.selection.key)) {
