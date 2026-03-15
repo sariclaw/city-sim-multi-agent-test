@@ -2,13 +2,14 @@ const app = document.querySelector('#app');
 
 const SEASONS = ['Spring', 'Summer', 'Autumn', 'Winter'];
 const ACTION_LIMIT = 2;
-const LOG_LIMIT = 8;
+const LOG_LIMIT = 10;
 const TICKS_PER_SEASON = 6;
 const SPEED_OPTIONS = [
   { label: '1x', value: 1, tickMs: 1000 },
   { label: '2x', value: 2, tickMs: 550 },
   { label: '4x', value: 4, tickMs: 280 },
 ];
+
 const DISTRICT_LAYOUT = [
   { key: 'civic', label: 'Civic Core', type: 'civic', x: 0.38, y: 0.16, w: 0.24, h: 0.21 },
   { key: 'north', label: 'North Steps', type: 'residential', x: 0.64, y: 0.1, w: 0.22, h: 0.24 },
@@ -19,70 +20,166 @@ const DISTRICT_LAYOUT = [
   { key: 'south', label: 'South Reach', type: 'mixed', x: 0.39, y: 0.65, w: 0.24, h: 0.19 },
 ];
 
-function createInitialState() {
-  return {
-    cityName: 'Stonehaven',
-    year: 1,
-    seasonIndex: 0,
-    turn: 1,
-    actionsLeft: ACTION_LIMIT,
-    gameOver: false,
-    resources: {
-      population: 120,
-      food: 90,
-      treasury: 70,
-      unrest: 12,
-    },
-    modifiers: {
-      farms: 0,
-      guard: 0,
-      markets: 0,
-    },
-    sim: {
-      paused: false,
-      speed: SPEED_OPTIONS[0].value,
-      tick: 0,
-      seasonTick: 0,
-      seasonProgress: 0,
-      accumulatorMs: 0,
-      lastFrameMs: 0,
-      seasonLength: TICKS_PER_SEASON,
-    },
-    log: [
-      'Stonehaven is founded beside a cold river valley. Balance food, coin, and public order as the city keeps moving.',
-    ],
-  };
-}
+const DISTRICT_MODELS = {
+  civic: {
+    housing: 8,
+    jobs: 24,
+    serviceSupply: 30,
+    transitSupply: 22,
+    revenueBase: 7,
+    upkeep: 8,
+    appeal: 0.62,
+    stability: 18,
+  },
+  residential: {
+    housing: 74,
+    jobs: 12,
+    serviceNeed: 18,
+    transitDemand: 14,
+    upkeep: 4,
+    appeal: 0.72,
+    stability: 8,
+  },
+  utility: {
+    jobs: 18,
+    powerSupply: 36,
+    waterSupply: 38,
+    serviceSupply: 4,
+    transitSupply: 12,
+    upkeep: 7,
+    appeal: 0.38,
+    stability: 10,
+  },
+  commercial: {
+    housing: 8,
+    jobs: 40,
+    revenueBase: 20,
+    transitSupply: 16,
+    serviceNeed: 10,
+    upkeep: 6,
+    appeal: 0.56,
+    stability: 4,
+  },
+  industrial: {
+    jobs: 46,
+    production: 32,
+    revenueBase: 15,
+    powerDemand: 20,
+    waterDemand: 12,
+    transitDemand: 22,
+    upkeep: 9,
+    appeal: 0.28,
+    stability: -8,
+  },
+  park: {
+    housing: 4,
+    jobs: 10,
+    food: 28,
+    waterSupply: 6,
+    serviceSupply: 20,
+    upkeep: 3,
+    appeal: 0.78,
+    stability: 12,
+  },
+  mixed: {
+    housing: 42,
+    jobs: 28,
+    revenueBase: 12,
+    transitSupply: 12,
+    transitDemand: 14,
+    serviceNeed: 14,
+    upkeep: 5,
+    appeal: 0.65,
+    stability: 6,
+  },
+};
 
-let state = createInitialState();
-let resizeQueued = false;
-let frameHandle = 0;
+const ASSET_DEFINITIONS = [
+  {
+    key: 'civic-hall',
+    districtKey: 'civic',
+    label: 'Council Hall',
+    maxLevel: 4,
+    effects: { serviceSupply: 12, stability: 8, transitSupply: 6, upkeep: 2 },
+  },
+  {
+    key: 'north-terraces',
+    districtKey: 'north',
+    label: 'Terrace Housing',
+    maxLevel: 4,
+    effects: { housing: 22, appeal: 0.08, serviceNeed: 4, transitDemand: 4, upkeep: 1 },
+  },
+  {
+    key: 'harbor-grid',
+    districtKey: 'harbor',
+    label: 'Tidal Grid',
+    maxLevel: 4,
+    effects: { powerSupply: 30, waterSupply: 18, jobs: 4, upkeep: 3 },
+  },
+  {
+    key: 'market-exchange',
+    districtKey: 'market',
+    label: 'Trade Exchange',
+    maxLevel: 4,
+    effects: { jobs: 12, revenueBase: 14, transitSupply: 8, upkeep: 2 },
+  },
+  {
+    key: 'park-greenhouses',
+    districtKey: 'park',
+    label: 'Greenhouses',
+    maxLevel: 4,
+    effects: { food: 18, serviceSupply: 6, waterSupply: 4, appeal: 0.05, upkeep: 1 },
+  },
+  {
+    key: 'industry-foundry',
+    districtKey: 'industry',
+    label: 'Foundry Line',
+    maxLevel: 4,
+    effects: { jobs: 16, production: 18, revenueBase: 10, powerDemand: 12, pollution: 12, upkeep: 3 },
+  },
+  {
+    key: 'south-crossings',
+    districtKey: 'south',
+    label: 'Mixed-Use Blocks',
+    maxLevel: 4,
+    effects: { housing: 18, jobs: 10, transitSupply: 10, appeal: 0.05, upkeep: 2 },
+  },
+];
 
 const actions = [
   {
-    key: 'farm',
-    label: 'Expand Fields',
-    note: 'Spend treasury now, strengthen future harvests.',
+    key: 'housing',
+    label: 'Expand Housing',
+    note: 'Upgrades the district under the strongest housing pressure.',
   },
   {
-    key: 'tax',
-    label: 'Raise Taxes',
-    note: 'Boost coin quickly, but unrest rises.',
+    key: 'grid',
+    label: 'Harden Grid',
+    note: 'Boosts utility output at Rivergate to relieve power and water strain.',
   },
   {
-    key: 'festival',
-    label: 'Hold Festival',
-    note: 'Reduce unrest and attract a few new families.',
+    key: 'industry',
+    label: 'Back Industry',
+    note: 'Raises production and jobs, but increases load and unrest risk.',
   },
   {
-    key: 'guard',
-    label: 'Reinforce Watch',
-    note: 'Spend coin to keep the streets calm.',
+    key: 'services',
+    label: 'Fund Services',
+    note: 'Strengthens civic services to calm unrest and support growth.',
   },
 ];
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function lerp(start, end, amount) {
+  return start + (end - start) * amount;
+}
+
+function roundNumber(value, digits = 1) {
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
 }
 
 function currentSeason() {
@@ -101,41 +198,590 @@ function currentTickMs() {
   return currentSpeedOption().tickMs;
 }
 
+function seasonProfile(season) {
+  switch (season) {
+    case 'Spring':
+      return { food: 1.08, growth: 0.45, utility: 1, upkeep: 1, mood: 4 };
+    case 'Summer':
+      return { food: 1.18, growth: 0.22, utility: 0.98, upkeep: 0.98, mood: 1 };
+    case 'Autumn':
+      return { food: 1.26, growth: 0.08, utility: 1, upkeep: 1.02, mood: 0 };
+    case 'Winter':
+      return { food: 0.6, growth: -0.38, utility: 1.15, upkeep: 1.12, mood: -8 };
+    default:
+      return { food: 1, growth: 0, utility: 1, upkeep: 1, mood: 0 };
+  }
+}
+
+function toneFromRatio(value, good = 1.04, warn = 0.92) {
+  if (value >= good) return 'good';
+  if (value >= warn) return 'warn';
+  return 'danger';
+}
+
+function toneFromPercent(value, highGood = 65, lowWarn = 42) {
+  if (value >= highGood) return 'good';
+  if (value >= lowWarn) return 'warn';
+  return 'danger';
+}
+
 function logEvent(message) {
   state.log.unshift(`${currentSeason()} Y${state.year}: ${message}`);
   state.log = state.log.slice(0, LOG_LIMIT);
 }
 
-function changeResource(key, amount) {
-  state.resources[key] += amount;
+function buildInitialDistricts() {
+  return DISTRICT_LAYOUT.map((district) => ({
+    ...district,
+    development:
+      district.type === 'civic' ? 0.8
+      : district.type === 'industrial' ? 0.72
+      : district.type === 'residential' ? 0.76
+      : district.type === 'utility' ? 0.74
+      : district.type === 'park' ? 0.7
+      : 0.68,
+    condition: district.type === 'industrial' ? 0.66 : 0.78,
+    residents: 0,
+    jobsFilled: 0,
+    localUnrest: 0,
+    growthTrend: 0,
+    status: 'Initializing',
+    metrics: {},
+  }));
 }
+
+function buildInitialAssets() {
+  return ASSET_DEFINITIONS.map((asset) => ({
+    ...asset,
+    level: asset.key === 'harbor-grid' || asset.key === 'north-terraces' ? 2 : 1,
+  }));
+}
+
+function createInitialState() {
+  return {
+    cityName: 'Stonehaven',
+    year: 1,
+    seasonIndex: 0,
+    turn: 1,
+    actionsLeft: ACTION_LIMIT,
+    gameOver: false,
+    sim: {
+      paused: false,
+      speed: SPEED_OPTIONS[0].value,
+      tick: 0,
+      seasonTick: 0,
+      seasonProgress: 0,
+      accumulatorMs: 0,
+      lastFrameMs: 0,
+      seasonLength: TICKS_PER_SEASON,
+    },
+    ui: {
+      selection: { kind: 'district', key: 'civic' },
+      hoveredTarget: null,
+    },
+    city: {
+      resources: {
+        population: 168,
+        treasury: 120,
+        food: 112,
+        unrest: 18,
+      },
+      districts: buildInitialDistricts(),
+      assets: buildInitialAssets(),
+      systems: {},
+      alerts: {
+        utilityStrain: false,
+        housingShortage: false,
+        congestion: false,
+        declinePressure: false,
+        growthPressure: false,
+      },
+    },
+    log: [
+      'Stonehaven runs on its own now: districts grow, strain, and recover even without direct intervention.',
+    ],
+  };
+}
+
+let state = createInitialState();
+let interactiveTargets = [];
+let resizeQueued = false;
+let frameHandle = 0;
 
 function mergeState(base, incoming) {
   return {
     ...base,
     ...incoming,
-    resources: {
-      ...base.resources,
-      ...(incoming.resources ?? {}),
-    },
-    modifiers: {
-      ...base.modifiers,
-      ...(incoming.modifiers ?? {}),
-    },
     sim: {
       ...base.sim,
       ...(incoming.sim ?? {}),
+    },
+    ui: {
+      ...base.ui,
+      ...(incoming.ui ?? {}),
+      selection: {
+        ...base.ui.selection,
+        ...(incoming.ui?.selection ?? {}),
+      },
+      hoveredTarget: incoming.ui?.hoveredTarget ?? base.ui.hoveredTarget,
+    },
+    city: {
+      ...base.city,
+      ...(incoming.city ?? {}),
+      resources: {
+        ...base.city.resources,
+        ...(incoming.city?.resources ?? {}),
+      },
+      districts: Array.isArray(incoming.city?.districts) ? incoming.city.districts : base.city.districts,
+      assets: Array.isArray(incoming.city?.assets) ? incoming.city.assets : base.city.assets,
+      systems: {
+        ...base.city.systems,
+        ...(incoming.city?.systems ?? {}),
+      },
+      alerts: {
+        ...base.city.alerts,
+        ...(incoming.city?.alerts ?? {}),
+      },
     },
     log: Array.isArray(incoming.log) ? incoming.log.slice(0, LOG_LIMIT) : base.log,
   };
 }
 
-function normalizeState() {
-  state.resources.population = Math.max(0, Math.round(state.resources.population));
-  state.resources.food = Math.max(0, Math.round(state.resources.food));
-  state.resources.treasury = Math.round(state.resources.treasury);
-  state.resources.unrest = clamp(Math.round(state.resources.unrest), 0, 100);
+function getDistrictByKey(key) {
+  return state.city.districts.find((district) => district.key === key);
+}
 
+function getAssetByKey(key) {
+  return state.city.assets.find((asset) => asset.key === key);
+}
+
+function selectDistrict(key) {
+  if (!getDistrictByKey(key)) return;
+  state.ui.selection = { kind: 'district', key };
+  render();
+}
+
+function selectAsset(key) {
+  if (!getAssetByKey(key)) return;
+  state.ui.selection = { kind: 'asset', key };
+  render();
+}
+
+function resolveAssetEffects(asset) {
+  return Object.fromEntries(
+    Object.entries(asset.effects).map(([key, value]) => [key, value * asset.level]),
+  );
+}
+
+function assetEffectsForDistrict(districtKey) {
+  return state.city.assets
+    .filter((asset) => asset.districtKey === districtKey)
+    .map(resolveAssetEffects)
+    .reduce((totals, effects) => {
+      Object.entries(effects).forEach(([key, value]) => {
+        totals[key] = (totals[key] ?? 0) + value;
+      });
+      return totals;
+    }, {});
+}
+
+function capacityFromDistrict(district, season) {
+  const base = DISTRICT_MODELS[district.type];
+  const assetEffects = assetEffectsForDistrict(district.key);
+  const developmentFactor = 0.64 + district.development * 0.76;
+  const conditionFactor = 0.68 + district.condition * 0.52;
+  const outputFactor = developmentFactor * conditionFactor;
+  const utilityFactor = conditionFactor * season.utility;
+
+  return {
+    housing: Math.max(0, ((base.housing ?? 0) + (assetEffects.housing ?? 0)) * developmentFactor),
+    jobs: Math.max(0, ((base.jobs ?? 0) + (assetEffects.jobs ?? 0)) * outputFactor),
+    food: Math.max(0, ((base.food ?? 0) + (assetEffects.food ?? 0)) * outputFactor * season.food),
+    powerSupply: Math.max(0, ((base.powerSupply ?? 0) + (assetEffects.powerSupply ?? 0)) * utilityFactor),
+    waterSupply: Math.max(0, ((base.waterSupply ?? 0) + (assetEffects.waterSupply ?? 0)) * utilityFactor),
+    serviceSupply: Math.max(0, ((base.serviceSupply ?? 0) + (assetEffects.serviceSupply ?? 0)) * outputFactor),
+    transitSupply: Math.max(0, ((base.transitSupply ?? 0) + (assetEffects.transitSupply ?? 0)) * outputFactor),
+    production: Math.max(0, ((base.production ?? 0) + (assetEffects.production ?? 0)) * outputFactor),
+    revenueBase: Math.max(0, ((base.revenueBase ?? 0) + (assetEffects.revenueBase ?? 0)) * outputFactor),
+    powerDemandBase: Math.max(0, ((base.powerDemand ?? 0) + (assetEffects.powerDemand ?? 0)) * outputFactor),
+    waterDemandBase: Math.max(0, ((base.waterDemand ?? 0) + (assetEffects.waterDemand ?? 0)) * outputFactor),
+    serviceNeedBase: Math.max(0, ((base.serviceNeed ?? 0) + (assetEffects.serviceNeed ?? 0)) * developmentFactor),
+    transitDemandBase: Math.max(0, ((base.transitDemand ?? 0) + (assetEffects.transitDemand ?? 0)) * developmentFactor),
+    upkeep: Math.max(0, ((base.upkeep ?? 0) + (assetEffects.upkeep ?? 0)) * season.upkeep * (0.82 + district.development * 0.4)),
+    appeal: (base.appeal ?? 0) + (assetEffects.appeal ?? 0) + district.condition * 0.12 + district.development * 0.08,
+    stability: (base.stability ?? 0) + (assetEffects.stability ?? 0) - (assetEffects.pollution ?? 0) * 0.28,
+    pollution: assetEffects.pollution ?? 0,
+  };
+}
+
+function calculateSnapshot() {
+  const season = seasonProfile(currentSeason());
+  const population = state.city.resources.population;
+  const laborPool = population * 0.58;
+  const districtCaps = state.city.districts.map((district) => ({
+    district,
+    capacities: capacityFromDistrict(district, season),
+  }));
+
+  const housingWeights = districtCaps.reduce((sum, entry) => {
+    if (entry.capacities.housing <= 0) return sum;
+    return sum + entry.capacities.housing * Math.max(0.35, entry.capacities.appeal);
+  }, 0);
+
+  districtCaps.forEach((entry) => {
+    const weight = entry.capacities.housing > 0
+      ? (entry.capacities.housing * Math.max(0.35, entry.capacities.appeal)) / Math.max(housingWeights, 1)
+      : 0;
+    entry.residents = Math.min(entry.capacities.housing, population * weight);
+  });
+
+  const jobsCapacity = districtCaps.reduce((sum, entry) => sum + entry.capacities.jobs, 0);
+  const laborDemand = Math.min(laborPool, jobsCapacity);
+  const jobWeights = districtCaps.reduce((sum, entry) => {
+    if (entry.capacities.jobs <= 0) return sum;
+    return sum + entry.capacities.jobs * Math.max(0.25, 0.45 + entry.capacities.appeal);
+  }, 0);
+
+  districtCaps.forEach((entry) => {
+    const weight = entry.capacities.jobs > 0
+      ? (entry.capacities.jobs * Math.max(0.25, 0.45 + entry.capacities.appeal)) / Math.max(jobWeights, 1)
+      : 0;
+    entry.jobsFilled = Math.min(entry.capacities.jobs, laborDemand * weight);
+  });
+
+  const totals = districtCaps.reduce((sum, entry) => {
+    sum.housing += entry.capacities.housing;
+    sum.jobs += entry.capacities.jobs;
+    sum.foodProduction += entry.capacities.food;
+    sum.powerSupply += entry.capacities.powerSupply;
+    sum.waterSupply += entry.capacities.waterSupply;
+    sum.serviceSupply += entry.capacities.serviceSupply;
+    sum.transitSupply += entry.capacities.transitSupply;
+    sum.production += entry.capacities.production;
+    sum.revenueBase += entry.capacities.revenueBase;
+    sum.upkeep += entry.capacities.upkeep;
+    sum.powerDemandBase += entry.capacities.powerDemandBase;
+    sum.waterDemandBase += entry.capacities.waterDemandBase;
+    sum.serviceNeedBase += entry.capacities.serviceNeedBase;
+    sum.transitDemandBase += entry.capacities.transitDemandBase;
+    sum.pollution += entry.capacities.pollution;
+    return sum;
+  }, {
+    housing: 0,
+    jobs: 0,
+    foodProduction: 0,
+    powerSupply: 0,
+    waterSupply: 0,
+    serviceSupply: 0,
+    transitSupply: 0,
+    production: 0,
+    revenueBase: 0,
+    upkeep: 0,
+    powerDemandBase: 0,
+    waterDemandBase: 0,
+    serviceNeedBase: 0,
+    transitDemandBase: 0,
+    pollution: 0,
+  });
+
+  const housingShortage = Math.max(0, population - totals.housing);
+  const employed = districtCaps.reduce((sum, entry) => sum + entry.jobsFilled, 0);
+  const employmentRate = laborPool > 0 ? employed / laborPool : 1;
+  const powerDemand = population * 0.22 + employed * 0.07 + totals.powerDemandBase;
+  const waterDemand = population * 0.2 + employed * 0.05 + totals.waterDemandBase;
+  const serviceNeed = population * 0.19 + totals.serviceNeedBase + state.city.resources.unrest * 0.18;
+  const transitDemand = population * 0.15 + employed * 0.1 + totals.transitDemandBase;
+  const powerCoverage = totals.powerSupply / Math.max(powerDemand, 1);
+  const waterCoverage = totals.waterSupply / Math.max(waterDemand, 1);
+  const utilityCoverage = Math.min(powerCoverage, waterCoverage);
+  const serviceCoverage = totals.serviceSupply / Math.max(serviceNeed, 1);
+  const congestionRatio = transitDemand / Math.max(totals.transitSupply, 1);
+  const foodDemand = population * 0.18;
+  const foodBufferRatio = state.city.resources.food / Math.max(foodDemand * 5, 1);
+  const utilityPenalty = Math.max(0, 1 - utilityCoverage) * 38;
+  const servicePenalty = Math.max(0, 1 - serviceCoverage) * 26;
+  const housingPenalty = housingShortage * 1.5;
+  const jobsPenalty = Math.max(0, 1 - employmentRate) * 16;
+  const congestionPenalty = Math.max(0, congestionRatio - 1) * 24;
+  const debtPenalty = state.city.resources.treasury < 0 ? Math.abs(state.city.resources.treasury) / 5 : 0;
+  const foodPenalty = foodBufferRatio < 0.45 ? (0.45 - foodBufferRatio) * 42 : 0;
+  const satisfaction = clamp(
+    84
+      + season.mood
+      - utilityPenalty
+      - servicePenalty
+      - housingPenalty
+      - jobsPenalty
+      - congestionPenalty
+      - debtPenalty
+      - foodPenalty
+      - totals.pollution * 0.22,
+    4,
+    96,
+  );
+  const unrestTarget = clamp(100 - satisfaction + totals.pollution * 0.24, 6, 100);
+  const efficiency = clamp(Math.min(utilityCoverage, serviceCoverage, 1.2) - Math.max(0, congestionRatio - 1) * 0.3, 0.45, 1.15);
+  const production = totals.production * efficiency * lerp(0.72, 1.02, employmentRate);
+  const revenue = totals.revenueBase * lerp(0.6, 1.04, employmentRate) * efficiency + production * 0.48;
+  const upkeep = totals.upkeep + Math.max(0, 1 - utilityCoverage) * 8 + Math.max(0, congestionRatio - 1) * 6;
+  const treasuryDelta = revenue - upkeep;
+  const foodDelta = totals.foodProduction - foodDemand;
+  const housingDemand = clamp(Math.round(4 + housingShortage / 5 + Math.max(0, 72 - satisfaction) / 8), 1, 10);
+  const jobsDemand = clamp(Math.round(3 + Math.max(0, 1 - employmentRate) * 9), 1, 10);
+  const utilitiesDemand = clamp(Math.round(3 + Math.max(0, 1 - utilityCoverage) * 11), 1, 10);
+  const servicesDemand = clamp(Math.round(3 + Math.max(0, 1 - serviceCoverage) * 9 + state.city.resources.unrest / 22), 1, 10);
+  const transitDemandScore = clamp(Math.round(3 + Math.max(0, congestionRatio - 1) * 10), 1, 10);
+  const growthPressure = clamp(
+    ((totals.housing - population) / 26) + ((satisfaction - 52) / 22) + season.growth + (employmentRate - 0.9) * 12,
+    -4,
+    8,
+  );
+  const declinePressure = clamp(
+    (housingShortage / 14)
+      + Math.max(0, 1 - utilityCoverage) * 5
+      + Math.max(0, congestionRatio - 1) * 4
+      + state.city.resources.unrest / 28
+      + debtPenalty / 5,
+    0,
+    10,
+  );
+
+  districtCaps.forEach((entry) => {
+    const housingLoad = entry.residents / Math.max(entry.capacities.housing, 1);
+    const jobsLoad = entry.jobsFilled / Math.max(entry.capacities.jobs, 1);
+    const localUtilityLoad = (
+      (entry.residents * 0.22 + entry.jobsFilled * 0.08 + entry.capacities.powerDemandBase)
+      / Math.max(entry.capacities.powerSupply + entry.capacities.waterSupply + 18, 1)
+    ) * (2 - Math.min(powerCoverage, waterCoverage, 1.2));
+    const localServicePressure = (
+      (entry.residents * 0.2 + entry.jobsFilled * 0.08 + entry.capacities.serviceNeedBase)
+      / Math.max(entry.capacities.serviceSupply + 12, 1)
+    ) * (2 - Math.min(serviceCoverage, 1.15));
+    const typeDemand =
+      entry.district.type === 'residential' || entry.district.type === 'mixed'
+        ? housingDemand / 10
+        : entry.district.type === 'utility'
+          ? utilitiesDemand / 10
+          : entry.district.type === 'park'
+            ? clamp((foodDemand - totals.foodProduction) / Math.max(foodDemand, 1) + servicesDemand / 16, 0, 1.4)
+            : entry.district.type === 'civic'
+              ? servicesDemand / 10
+              : jobsDemand / 10;
+    const localUnrest = clamp(
+      state.city.resources.unrest * 0.46
+        + Math.max(0, housingLoad - 0.92) * 34
+        + Math.max(0, localUtilityLoad - 0.9) * 26
+        + Math.max(0, localServicePressure - 1) * 24
+        - entry.capacities.stability
+        - entry.capacities.appeal * 12,
+      2,
+      100,
+    );
+    const growthTrend = clamp(
+      typeDemand
+        + (satisfaction - 50) / 50
+        + (entry.capacities.appeal - 0.55)
+        - Math.max(0, localUtilityLoad - 0.92) * 1.6
+        - Math.max(0, localServicePressure - 1) * 1.3
+        - localUnrest / 75,
+      -3,
+      3,
+    );
+    entry.localUnrest = localUnrest;
+    entry.growthTrend = growthTrend;
+    entry.utilityLoad = localUtilityLoad;
+    entry.servicePressure = localServicePressure;
+    entry.status =
+      growthTrend > 1.2 ? 'Growing'
+      : localUnrest > 62 ? 'Strained'
+      : localUtilityLoad > 1.05 ? 'Utility strain'
+      : localServicePressure > 1.02 ? 'Service pressure'
+      : 'Stable';
+  });
+
+  return {
+    season,
+    districts: districtCaps,
+    totals,
+    demand: {
+      housing: housingDemand,
+      jobs: jobsDemand,
+      utilities: utilitiesDemand,
+      services: servicesDemand,
+      transit: transitDemandScore,
+    },
+    housing: {
+      capacity: totals.housing,
+      shortage: housingShortage,
+      pressure: housingShortage / Math.max(population, 1),
+    },
+    utilities: {
+      power: { supply: totals.powerSupply, demand: powerDemand, coverage: powerCoverage },
+      water: { supply: totals.waterSupply, demand: waterDemand, coverage: waterCoverage },
+      transit: { supply: totals.transitSupply, demand: transitDemand, load: congestionRatio },
+    },
+    services: {
+      supply: totals.serviceSupply,
+      need: serviceNeed,
+      coverage: serviceCoverage,
+      pressure: Math.max(0, 1 - serviceCoverage),
+    },
+    economy: {
+      jobsCapacity,
+      laborPool,
+      employed,
+      employmentRate,
+      production,
+      revenue,
+      upkeep,
+      treasuryDelta,
+    },
+    food: {
+      production: totals.foodProduction,
+      demand: foodDemand,
+      delta: foodDelta,
+      reserveRatio: foodBufferRatio,
+    },
+    mood: {
+      satisfaction,
+      unrestTarget,
+    },
+    pressure: {
+      growth: growthPressure,
+      decline: declinePressure,
+      utilityStrain: utilityCoverage < 0.95,
+      housingShortage: housingShortage > 6,
+      congestion: congestionRatio > 1.02,
+      declinePressure: declinePressure > 3.7,
+      growthPressure: growthPressure > 1.8,
+    },
+    summary: {
+      activity: clamp(
+        34 + state.sim.seasonProgress * 30 + production / 6 - state.city.resources.unrest / 5 + (state.sim.paused ? -14 : 10),
+        12,
+        98,
+      ),
+      alerts:
+        Number(utilityCoverage < 0.95)
+        + Number(housingShortage > 6)
+        + Number(congestionRatio > 1.02)
+        + Number(state.city.resources.unrest > 48),
+    },
+  };
+}
+
+function syncDistrictState(snapshot) {
+  state.city.districts = state.city.districts.map((district) => {
+    const next = snapshot.districts.find((entry) => entry.district.key === district.key);
+    if (!next) return district;
+    return {
+      ...district,
+      residents: next.residents,
+      jobsFilled: next.jobsFilled,
+      localUnrest: next.localUnrest,
+      growthTrend: next.growthTrend,
+      status: next.status,
+      metrics: {
+        housingCapacity: next.capacities.housing,
+        jobsCapacity: next.capacities.jobs,
+        powerSupply: next.capacities.powerSupply,
+        waterSupply: next.capacities.waterSupply,
+        serviceSupply: next.capacities.serviceSupply,
+        production: next.capacities.production,
+        revenueBase: next.capacities.revenueBase,
+        utilityLoad: next.utilityLoad,
+        servicePressure: next.servicePressure,
+        appeal: next.capacities.appeal,
+        stability: next.capacities.stability,
+        pollution: next.capacities.pollution,
+      },
+    };
+  });
+}
+
+function recomputeDerivedState() {
+  const snapshot = calculateSnapshot();
+  syncDistrictState(snapshot);
+
+  state.city.systems = {
+    season: currentSeason(),
+    demand: snapshot.demand,
+    housing: {
+      ...snapshot.housing,
+      pressurePercent: Math.round(snapshot.housing.pressure * 100),
+    },
+    utilities: {
+      power: {
+        ...snapshot.utilities.power,
+        coveragePercent: Math.round(snapshot.utilities.power.coverage * 100),
+      },
+      water: {
+        ...snapshot.utilities.water,
+        coveragePercent: Math.round(snapshot.utilities.water.coverage * 100),
+      },
+      transit: {
+        ...snapshot.utilities.transit,
+        loadPercent: Math.round(snapshot.utilities.transit.load * 100),
+      },
+    },
+    services: {
+      ...snapshot.services,
+      coveragePercent: Math.round(snapshot.services.coverage * 100),
+    },
+    economy: {
+      ...snapshot.economy,
+      employmentPercent: Math.round(snapshot.economy.employmentRate * 100),
+    },
+    food: snapshot.food,
+    mood: {
+      satisfaction: roundNumber(snapshot.mood.satisfaction),
+      unrestTarget: roundNumber(snapshot.mood.unrestTarget),
+    },
+    pressure: snapshot.pressure,
+    summary: snapshot.summary,
+    overlays: [
+      {
+        key: 'growth',
+        label: 'Growth',
+        value: `${Math.round(clamp(50 + snapshot.pressure.growth * 8, 0, 100))}%`,
+        tone: toneFromPercent(50 + snapshot.pressure.growth * 8),
+      },
+      {
+        key: 'power',
+        label: 'Power',
+        value: `${Math.round(snapshot.utilities.power.coverage * 100)}%`,
+        tone: toneFromRatio(snapshot.utilities.power.coverage),
+      },
+      {
+        key: 'water',
+        label: 'Water',
+        value: `${Math.round(snapshot.utilities.water.coverage * 100)}%`,
+        tone: toneFromRatio(snapshot.utilities.water.coverage),
+      },
+      {
+        key: 'Unrest',
+        label: 'Unrest',
+        value: `${Math.round(state.city.resources.unrest)}%`,
+        tone: state.city.resources.unrest < 28 ? 'good' : state.city.resources.unrest < 54 ? 'warn' : 'danger',
+      },
+    ],
+  };
+}
+
+function normalizeState() {
+  state.city.resources.population = Math.max(0, roundNumber(state.city.resources.population));
+  state.city.resources.treasury = roundNumber(state.city.resources.treasury);
+  state.city.resources.food = Math.max(0, roundNumber(state.city.resources.food));
+  state.city.resources.unrest = clamp(roundNumber(state.city.resources.unrest), 0, 100);
+  state.city.districts = state.city.districts.map((district) => ({
+    ...district,
+    development: clamp(roundNumber(district.development, 3), 0.22, 1.4),
+    condition: clamp(roundNumber(district.condition, 3), 0.22, 1.2),
+  }));
+  state.city.assets = state.city.assets.map((asset) => ({
+    ...asset,
+    level: clamp(Math.round(asset.level), 1, asset.maxLevel),
+  }));
   state.sim.speed = currentSpeedOption().value;
   state.sim.tick = Math.max(0, Math.round(state.sim.tick));
   state.sim.seasonLength = Math.max(1, Math.round(state.sim.seasonLength || TICKS_PER_SEASON));
@@ -143,161 +789,244 @@ function normalizeState() {
   state.sim.accumulatorMs = Math.max(0, state.sim.accumulatorMs || 0);
   state.sim.lastFrameMs = Math.max(0, state.sim.lastFrameMs || 0);
   state.sim.seasonProgress = clamp(state.sim.seasonTick / state.sim.seasonLength, 0, 1);
+  state.ui.hoveredTarget = state.ui.hoveredTarget ?? null;
+  recomputeDerivedState();
 
-  if (!state.gameOver && state.resources.population <= 0) {
-    state.gameOver = true;
-    state.sim.paused = true;
-    logEvent('The city is abandoned. No citizens remain to govern.');
-  } else if (!state.gameOver && state.resources.unrest >= 100) {
-    state.gameOver = true;
-    state.sim.paused = true;
-    logEvent('Unrest boils into open revolt. City rule collapses.');
+  if (!getDistrictByKey(state.ui.selection.key) && !getAssetByKey(state.ui.selection.key)) {
+    state.ui.selection = { kind: 'district', key: 'civic' };
   }
+
+  if (!state.gameOver && state.city.resources.population <= 0) {
+    state.gameOver = true;
+    state.sim.paused = true;
+    logEvent('The city has emptied out. District systems fall silent without residents to sustain them.');
+  } else if (!state.gameOver && state.city.resources.unrest >= 100) {
+    state.gameOver = true;
+    state.sim.paused = true;
+    logEvent('Systemic strain breaks the charter. Stonehaven collapses into open revolt.');
+  }
+}
+
+function selectedHousingAsset() {
+  const options = ['north-terraces', 'south-crossings']
+    .map((key) => getAssetByKey(key))
+    .filter(Boolean)
+    .filter((asset) => asset.level < asset.maxLevel)
+    .map((asset) => {
+      const district = getDistrictByKey(asset.districtKey);
+      return {
+        asset,
+        score: (district?.growthTrend ?? 0) - (district?.localUnrest ?? 0) * 0.01 + asset.level * -0.1,
+      };
+    })
+    .sort((left, right) => right.score - left.score);
+
+  return options[0]?.asset ?? null;
+}
+
+function selectedAssetForAction(actionKey) {
+  if (state.ui.selection.kind === 'asset') {
+    const asset = getAssetByKey(state.ui.selection.key);
+    const matchesAction =
+      (actionKey === 'housing' && ['north-terraces', 'south-crossings'].includes(asset?.key))
+      || (actionKey === 'grid' && asset?.key === 'harbor-grid')
+      || (actionKey === 'industry' && asset?.key === 'industry-foundry')
+      || (actionKey === 'services' && asset?.key === 'civic-hall');
+    if (asset && matchesAction && asset.level < asset.maxLevel) {
+      return asset;
+    }
+  }
+
+  if (state.ui.selection.kind === 'district') {
+    const district = getDistrictByKey(state.ui.selection.key);
+    const preferredKey =
+      actionKey === 'housing' && district?.type === 'residential' ? 'north-terraces'
+      : actionKey === 'housing' && district?.type === 'mixed' ? 'south-crossings'
+      : actionKey === 'grid' && district?.key === 'harbor' ? 'harbor-grid'
+      : actionKey === 'industry' && district?.key === 'industry' ? 'industry-foundry'
+      : actionKey === 'services' && district?.key === 'civic' ? 'civic-hall'
+      : null;
+    const asset = preferredKey ? getAssetByKey(preferredKey) : null;
+    if (asset && asset.level < asset.maxLevel) {
+      return asset;
+    }
+  }
+
+  return null;
+}
+
+function upgradeAsset(assetKey, cost) {
+  const asset = getAssetByKey(assetKey);
+  if (!asset || asset.level >= asset.maxLevel) return false;
+  if (state.city.resources.treasury < cost) return false;
+  state.city.resources.treasury -= cost;
+  asset.level += 1;
+  return true;
 }
 
 function applyAction(type) {
   if (state.gameOver || state.actionsLeft <= 0) return;
 
-  const handlers = {
-    farm() {
-      changeResource('treasury', -12);
-      changeResource('food', 8);
-      state.modifiers.farms += 1;
-      logEvent('You expand nearby fields. Seed stores shrink now, but future harvests will be stronger.');
-    },
-    tax() {
-      changeResource('treasury', 18 + state.modifiers.markets * 2);
-      changeResource('unrest', 7);
-      logEvent('Collectors sweep the markets. Coin flows in, and resentment follows.');
-    },
-    festival() {
-      changeResource('treasury', -10);
-      changeResource('food', -8);
-      changeResource('unrest', -14);
-      changeResource('population', 4);
-      logEvent('A civic festival restores morale and draws hopeful families into the city.');
-    },
-    guard() {
-      changeResource('treasury', -14);
-      state.modifiers.guard += 1;
-      changeResource('unrest', -6);
-      logEvent('You reinforce the watch. Patrols steady the streets before the next unrest spike.');
-    },
-  };
+  let applied = false;
+  if (type === 'housing') {
+    const asset = selectedAssetForAction(type) ?? selectedHousingAsset();
+    if (asset) {
+      const cost = 22 + asset.level * 6;
+      applied = upgradeAsset(asset.key, cost);
+      if (applied) {
+        logEvent(`${asset.label} expands in ${getDistrictByKey(asset.districtKey)?.label}. More housing comes online, but service demand rises too.`);
+      }
+    }
+  }
 
-  handlers[type]?.();
+  if (type === 'grid') {
+    const asset = selectedAssetForAction(type) ?? getAssetByKey('harbor-grid');
+    if (asset) {
+      const cost = 24 + asset.level * 8;
+      applied = upgradeAsset(asset.key, cost);
+      if (applied) {
+        state.city.resources.unrest = Math.max(0, state.city.resources.unrest - 3);
+        logEvent('Rivergate hardens the utility grid. Power and water margins improve immediately.');
+      }
+    }
+  }
+
+  if (type === 'industry') {
+    const asset = selectedAssetForAction(type) ?? getAssetByKey('industry-foundry');
+    if (asset) {
+      const cost = 20 + asset.level * 8;
+      applied = upgradeAsset(asset.key, cost);
+      if (applied) {
+        state.city.resources.unrest += 2;
+        logEvent('Ironworks receives fresh capital. Output and jobs rise, but district pressure sharpens.');
+      }
+    }
+  }
+
+  if (type === 'services') {
+    const asset = selectedAssetForAction(type) ?? getAssetByKey('civic-hall');
+    if (asset) {
+      const cost = 18 + asset.level * 7;
+      applied = upgradeAsset(asset.key, cost);
+      if (applied) {
+        state.city.resources.unrest = Math.max(0, state.city.resources.unrest - 7);
+        state.city.resources.population += 1.2;
+        logEvent('Civic services deepen. Satisfaction rebounds and a few new households decide to stay.');
+      }
+    }
+  }
+
+  if (!applied) return;
+
   state.actionsLeft -= 1;
   normalizeState();
   render();
 }
 
-function seasonalHarvest(season) {
-  const farmBonus = state.modifiers.farms * 4;
-  switch (season) {
-    case 'Spring': return 14 + farmBonus;
-    case 'Summer': return 18 + farmBonus;
-    case 'Autumn': return 28 + farmBonus * 2;
-    case 'Winter': return 6 + Math.floor(farmBonus / 2);
-    default: return 0;
-  }
-}
+function syncAlerts() {
+  const nextAlerts = state.city.systems.pressure;
+  const previous = state.city.alerts;
+  const districtUnderMostPressure = [...state.city.districts].sort((left, right) => {
+    const leftRisk = left.localUnrest + left.metrics.utilityLoad * 30 + left.metrics.servicePressure * 24;
+    const rightRisk = right.localUnrest + right.metrics.utilityLoad * 30 + right.metrics.servicePressure * 24;
+    return rightRisk - leftRisk;
+  })[0];
+  const districtWithGrowth = [...state.city.districts].sort((left, right) => right.growthTrend - left.growthTrend)[0];
 
-function seasonalUnrestDelta(season) {
-  switch (season) {
-    case 'Spring': return -2;
-    case 'Summer': return 2;
-    case 'Autumn': return 1;
-    case 'Winter': return 8;
-    default: return 0;
+  if (nextAlerts.utilityStrain && !previous.utilityStrain) {
+    logEvent('Utility strain spreads through the grid. District activity starts throttling under constrained supply.');
   }
-}
-
-function turnSummary(season, harvest, foodDemand, taxes) {
-  return `${season} closes: +${harvest} food produced, ${foodDemand} food consumed, +${taxes} taxes collected.`;
-}
-
-function seasonPressureProfile(season) {
-  switch (season) {
-    case 'Spring': return { food: 1.1, unrest: -0.5, treasury: 1.0, growth: 0.18 };
-    case 'Summer': return { food: 1.2, unrest: 0.3, treasury: 1.1, growth: 0.12 };
-    case 'Autumn': return { food: 1.35, unrest: 0.2, treasury: 1.2, growth: 0.08 };
-    case 'Winter': return { food: 0.55, unrest: 1.5, treasury: 0.8, growth: -0.15 };
-    default: return { food: 1, unrest: 0, treasury: 1, growth: 0 };
+  if (nextAlerts.housingShortage && !previous.housingShortage) {
+    logEvent('Housing demand outruns capacity. Overcrowding begins pushing up local tension.');
   }
+  if (nextAlerts.congestion && !previous.congestion) {
+    logEvent('Congestion forms along the main corridors. Movement inefficiency starts dragging on production.');
+  }
+  if (nextAlerts.declinePressure && !previous.declinePressure && districtUnderMostPressure) {
+    logEvent(`${districtUnderMostPressure.label} starts to slip under compound pressure from utilities, services, and unrest.`);
+  }
+  if (nextAlerts.growthPressure && !previous.growthPressure && districtWithGrowth) {
+    logEvent(`${districtWithGrowth.label} picks up development momentum as the city leans into new demand.`);
+  }
+
+  state.city.alerts = {
+    utilityStrain: nextAlerts.utilityStrain,
+    housingShortage: nextAlerts.housingShortage,
+    congestion: nextAlerts.congestion,
+    declinePressure: nextAlerts.declinePressure,
+    growthPressure: nextAlerts.growthPressure,
+  };
 }
 
 function tickCity() {
   if (state.gameOver) return;
 
-  const season = currentSeason();
-  const profile = seasonPressureProfile(season);
-  const { population, food, unrest } = state.resources;
-  const upkeep = 2 + state.modifiers.guard * 0.6;
-  const foodDemand = population / 48;
-  const harvest = seasonalHarvest(season) / state.sim.seasonLength;
-  const taxes = (population / 18 + state.modifiers.markets * 1.5) / state.sim.seasonLength;
-  const securityRelief = state.modifiers.guard * 0.7;
-  const scarcity = food < 18 ? (18 - food) / 9 : 0;
-  const unrestPressure = Math.max(0, unrest - 42) / 34;
-  const prosperity = food > 70 && unrest < 28 ? 0.55 : 0;
-  const populationDelta = profile.growth + prosperity - scarcity * 0.8 - unrestPressure * 0.65;
+  const systems = state.city.systems;
+  const growthSignal =
+    (systems.mood.satisfaction - 54) / 24
+    + systems.pressure.growth * 0.32
+    - systems.pressure.decline * 0.24
+    - state.city.resources.unrest / 70;
+  const populationDelta = clamp(growthSignal, -3.2, 2.8);
+  const unrestDelta = clamp((systems.mood.unrestTarget - state.city.resources.unrest) * 0.18, -4.2, 5.4);
+  const foodDelta = systems.food.delta;
+  const treasuryDelta = systems.economy.treasuryDelta;
 
-  changeResource('food', harvest * profile.food - foodDemand);
-  changeResource('treasury', taxes * profile.treasury - upkeep);
-  changeResource('unrest', profile.unrest + scarcity * 2.8 + unrestPressure * 0.7 - securityRelief);
-  changeResource('population', populationDelta);
+  state.city.resources.population += populationDelta;
+  state.city.resources.food += foodDelta;
+  state.city.resources.treasury += treasuryDelta;
+  state.city.resources.unrest += unrestDelta;
 
-  if (state.resources.food < 0) {
-    const shortage = Math.abs(state.resources.food);
-    state.resources.food = 0;
-    changeResource('population', -Math.ceil(shortage));
-    changeResource('unrest', 5 + shortage * 1.5);
-    logEvent(`Granaries run empty mid-season. ${Math.ceil(shortage)} households leave and tempers flare.`);
+  if (state.city.resources.food <= 0 && foodDelta < 0) {
+    const shortage = Math.abs(state.city.resources.food);
+    state.city.resources.food = 0;
+    state.city.resources.population -= clamp(shortage * 0.5, 0.4, 3.2);
+    state.city.resources.unrest += 4 + shortage * 0.6;
   }
 
-  if (state.resources.treasury < -15) {
-    changeResource('unrest', 3);
-    logEvent('Debt now delays wages and repairs. Street grumbling spreads.');
+  if (state.city.resources.treasury < -45) {
+    state.city.resources.unrest += 1.4;
   }
 
-  if (state.resources.population > population + 1 && prosperity > 0) {
-    logEvent('Stable stores and calm streets attract new residents.');
-  }
+  state.city.districts.forEach((district) => {
+    const districtUtilityPenalty = Math.max(0, district.metrics.utilityLoad - 0.95);
+    const districtServicePenalty = Math.max(0, district.metrics.servicePressure - 1);
+    const developmentDelta = clamp(
+      district.growthTrend * 0.014 - districtUtilityPenalty * 0.012 - district.localUnrest / 500,
+      -0.026,
+      0.028,
+    );
+    const conditionDelta = clamp(
+      ((1.02 - districtUtilityPenalty - districtServicePenalty) - district.localUnrest / 100) * 0.01,
+      -0.018,
+      0.018,
+    );
+    district.development += developmentDelta;
+    district.condition += conditionDelta;
+  });
 
   state.sim.tick += 1;
   state.sim.seasonTick += 1;
+  normalizeState();
+  syncAlerts();
 
   if (state.sim.seasonTick >= state.sim.seasonLength) {
     advanceSeason();
     return;
   }
 
-  normalizeState();
   render();
+}
+
+function seasonSummary() {
+  const systems = state.city.systems;
+  return `${currentSeason()} closes with ${Math.round(systems.economy.production)} output, ${Math.round(systems.food.production)} food, utility coverage at ${Math.round(Math.min(systems.utilities.power.coverage, systems.utilities.water.coverage) * 100)}%, and satisfaction at ${Math.round(systems.mood.satisfaction)}%.`;
 }
 
 function advanceSeason() {
   if (state.gameOver) return;
 
-  const season = currentSeason();
-  const taxes = Math.floor(state.resources.population / 14) + state.modifiers.markets * 3;
-  const unrestShift = seasonalUnrestDelta(season) - state.modifiers.guard * 2;
-
-  changeResource('treasury', taxes);
-  changeResource('unrest', unrestShift);
-
-  if (state.resources.food > 120) {
-    changeResource('population', 3 + state.modifiers.farms);
-    logEvent('A surplus season ends with migrants settling near the city edge.');
-  }
-
-  if (state.resources.unrest >= 60) {
-    changeResource('population', -Math.ceil((state.resources.unrest - 55) / 18));
-    logEvent('Persistent unrest pushes some residents to quieter towns.');
-  }
-
-  logEvent(turnSummary(season, seasonalHarvest(season), Math.ceil(state.resources.population / 8), taxes));
-
+  logEvent(seasonSummary());
   state.turn += 1;
   state.actionsLeft = ACTION_LIMIT;
   state.seasonIndex += 1;
@@ -307,13 +1036,14 @@ function advanceSeason() {
   if (state.seasonIndex >= SEASONS.length) {
     state.seasonIndex = 0;
     state.year += 1;
-    state.modifiers.markets += 1;
-    logEvent('A new year begins. Market routines sharpen, improving the city tax base.');
+    state.city.resources.treasury += 10;
+    logEvent('A new year starts. Contract renewals add a modest treasury cushion for the next cycle.');
   } else {
-    logEvent(`${currentSeason()} begins. The city rhythm shifts with the new weather.`);
+    logEvent(`${currentSeason()} begins. Baseline pressures shift with the new weather.`);
   }
 
   normalizeState();
+  syncAlerts();
   render();
 }
 
@@ -340,10 +1070,10 @@ function rushSeason() {
 }
 
 function resourceTone(key, value) {
-  if (key === 'unrest') return value >= 65 ? 'danger' : value >= 35 ? 'warn' : 'good';
-  if (key === 'treasury') return value < 0 ? 'danger' : value < 25 ? 'warn' : 'good';
-  if (key === 'food') return value < 20 ? 'danger' : value < 50 ? 'warn' : 'good';
-  return value < 80 ? 'warn' : 'good';
+  if (key === 'satisfaction') return value >= 65 ? 'good' : value >= 45 ? 'warn' : 'danger';
+  if (key === 'treasury') return value < 0 ? 'danger' : value < 40 ? 'warn' : 'good';
+  if (key === 'food') return value < 25 ? 'danger' : value < 70 ? 'warn' : 'good';
+  return value < 140 ? 'warn' : 'good';
 }
 
 function seasonPalette(season) {
@@ -381,61 +1111,33 @@ function seasonPalette(season) {
   return palettes[season] ?? palettes.Spring;
 }
 
-function createDistrictMetrics() {
-  const { population, food, treasury, unrest } = state.resources;
-  const liveStatus = state.gameOver ? 'Systems offline' : state.sim.paused ? 'Awaiting input' : `Flowing at ${currentSpeedOption().label}`;
-
-  const housingDensity = clamp(Math.round(population / 22), 2, 8);
-  const commerceDensity = clamp(state.modifiers.markets + Math.round(treasury / 35), 1, 6);
-  const farmDensity = clamp(state.modifiers.farms + Math.round(food / 45), 1, 6);
-  const utilityLoad = clamp(2 + state.modifiers.guard + Math.round(population / 90), 2, 6);
-  const industrialLoad = clamp(2 + Math.round(treasury / 40) + Math.round(unrest / 30), 2, 7);
-
-  return {
-    civic: { intensity: clamp(3 + state.modifiers.guard + state.modifiers.markets, 3, 8), status: unrest > 50 ? 'Tense governance' : liveStatus },
-    north: { intensity: housingDensity, status: unrest > 60 ? 'Residents uneasy' : 'Housing occupied' },
-    harbor: { intensity: utilityLoad, status: food < 35 ? 'Supply constrained' : 'Utilities online' },
-    market: { intensity: commerceDensity, status: treasury < 20 ? 'Thin trade' : 'Trading actively' },
-    park: { intensity: farmDensity, status: food > 70 ? 'Productive green belt' : 'Fields under pressure' },
-    industry: { intensity: industrialLoad, status: treasury > 40 ? 'Factories humming' : 'Workshops steady' },
-    south: { intensity: clamp(2 + state.modifiers.farms + state.modifiers.markets, 2, 6), status: population > 150 ? 'Expansion underway' : 'Plots being staged' },
-  };
-}
-
 function createCityViewModel() {
-  const season = currentSeason();
-  const palette = seasonPalette(season);
-  const { population, food, treasury, unrest } = state.resources;
-  const districtMetrics = createDistrictMetrics();
-  const powerLevel = clamp(40 + state.modifiers.guard * 10 + state.modifiers.markets * 8, 35, 98);
-  const waterLevel = clamp(52 + state.modifiers.farms * 10 + Math.round(food / 3), 45, 100);
-  const transitLevel = clamp(35 + state.modifiers.markets * 12 + Math.round(population / 10), 30, 96);
-  const activityLevel = clamp(28 + Math.round(state.sim.seasonProgress * 40) + (state.sim.paused ? -8 : 14), 18, 96);
-
-  const districts = DISTRICT_LAYOUT.map((district) => ({
+  const systems = state.city.systems;
+  const districts = state.city.districts.map((district) => ({
     ...district,
-    ...districtMetrics[district.key],
+    intensity: clamp(Math.round(2 + district.development * 5 + district.condition * 2), 2, 9),
+    utilityTone: toneFromRatio(1 / Math.max(district.metrics.utilityLoad, 0.6)),
+    growthTone: district.growthTrend > 1 ? 'good' : district.growthTrend > -0.4 ? 'warn' : 'danger',
   }));
 
   return {
-    palette,
+    palette: seasonPalette(currentSeason()),
     districts,
-    overlays: [
-      { label: 'Power', value: `${powerLevel}%`, tone: powerLevel > 70 ? 'good' : powerLevel > 45 ? 'warn' : 'danger' },
-      { label: 'Water', value: `${waterLevel}%`, tone: waterLevel > 70 ? 'good' : waterLevel > 50 ? 'warn' : 'danger' },
-      { label: 'Transit', value: `${transitLevel}%`, tone: transitLevel > 70 ? 'good' : transitLevel > 45 ? 'warn' : 'danger' },
-    ],
-    demand: {
-      housing: clamp(Math.round(population / 16), 4, 10),
-      food: clamp(Math.round((100 - food) / 12) + 2, 2, 10),
-      unrest: clamp(Math.round(unrest / 10) + 1, 1, 10),
-    },
+    overlays: systems.overlays,
+    demand: systems.demand,
     skyline: {
-      towers: clamp(3 + state.modifiers.markets, 3, 7),
-      cranes: clamp(1 + Math.floor(population / 90), 1, 4),
-      smoke: clamp(Math.round(unrest / 18), 0, 5),
+      towers: clamp(3 + Math.round(systems.economy.production / 34), 3, 8),
+      cranes: clamp(1 + Math.round(Math.max(0, systems.pressure.growth)), 1, 5),
+      smoke: clamp(Math.round(state.city.resources.unrest / 18 + systems.economy.production / 44), 0, 6),
     },
-    stats: { population, food, treasury, unrest, season, activityLevel },
+    stats: {
+      season: currentSeason(),
+      population: Math.round(state.city.resources.population),
+      treasury: Math.round(state.city.resources.treasury),
+      unrest: Math.round(state.city.resources.unrest),
+      satisfaction: Math.round(systems.mood.satisfaction),
+      activityLevel: Math.round(systems.summary.activity),
+    },
   };
 }
 
@@ -591,26 +1293,57 @@ function drawDistrict(context, district, width, height) {
   gradient.addColorStop(1, shade);
 
   fillRoundedRect(context, x, y, w, h, Math.max(16, width * 0.018), gradient);
-  strokeRoundedRect(context, x, y, w, h, Math.max(16, width * 0.018), 'rgba(255, 255, 255, 0.14)', 1.2);
+  strokeRoundedRect(
+    context,
+    x,
+    y,
+    w,
+    h,
+    Math.max(16, width * 0.018),
+    district.growthTone === 'good' ? 'rgba(158, 226, 173, 0.74)' : district.growthTone === 'danger' ? 'rgba(255, 159, 145, 0.78)' : 'rgba(255, 255, 255, 0.14)',
+    district.growthTone === 'warn' ? 1.2 : 2,
+  );
 
   context.fillStyle = 'rgba(255, 255, 255, 0.05)';
   fillRoundedRect(context, x + w * 0.04, y + h * 0.06, w * 0.92, h * 0.88, Math.max(12, width * 0.015), context.fillStyle);
 
   drawDistrictBuildings(context, district, { x: x + w * 0.05, y: y + h * 0.18, w: w * 0.9, h: h * 0.72 });
 
+  const selection = selectionMatches('district', district.key);
+  const hovered = hoverMatches('district', district.key);
+  if (selection || hovered) {
+    strokeRoundedRect(
+      context,
+      x - 4,
+      y - 4,
+      w + 8,
+      h + 8,
+      Math.max(18, width * 0.02),
+      selection ? '#f4fbff' : 'rgba(255, 255, 255, 0.72)',
+      selection ? 2.5 : 1.8,
+    );
+  }
+
   context.fillStyle = '#f5fbff';
   context.font = `600 ${Math.max(12, width * 0.018)}px "Trebuchet MS", sans-serif`;
   context.fillText(district.label, x + w * 0.07, y + h * 0.16);
 
-  context.fillStyle = 'rgba(235, 246, 255, 0.8)';
+  context.fillStyle = district.utilityTone === 'good' ? '#9ee2ad' : district.utilityTone === 'warn' ? '#ffd37f' : '#ff9f91';
   context.font = `500 ${Math.max(10, width * 0.013)}px "Trebuchet MS", sans-serif`;
   context.fillText(district.status, x + w * 0.07, y + h * 0.26);
+
+  context.fillStyle = 'rgba(8, 15, 22, 0.55)';
+  fillRoundedRect(context, x + w * 0.06, y + h * 0.78, w * 0.42, h * 0.13, 12, context.fillStyle);
+  context.fillStyle = '#dbeeff';
+  context.fillText(`${Math.round(district.localUnrest)}% unrest`, x + w * 0.09, y + h * 0.865);
+
+  interactiveTargets.push({ kind: 'district', key: district.key, x, y, w, h });
 }
 
 function drawUtilities(context, width, height, overlays) {
-  const startX = width * 0.7;
+  const startX = width * 0.62;
   const y = height * 0.08;
-  const chipWidth = width * 0.08;
+  const chipWidth = width * 0.085;
 
   overlays.forEach((overlay, index) => {
     const x = startX + index * chipWidth;
@@ -626,6 +1359,7 @@ function drawUtilities(context, width, height, overlays) {
 }
 
 function drawMap(context, viewModel, width, height) {
+  interactiveTargets = [];
   const { palette, districts, overlays, skyline, stats } = viewModel;
   const sky = context.createLinearGradient(0, 0, 0, height);
   sky.addColorStop(0, palette.skyTop);
@@ -643,28 +1377,31 @@ function drawMap(context, viewModel, width, height) {
   drawWaterfront(context, width, height, palette);
   drawRoadNetwork(context, width, height);
   districts.forEach((district) => drawDistrict(context, district, width, height));
+  districts.forEach((district) => {
+    const districtAssets = state.city.assets.filter((asset) => asset.districtKey === district.key);
+    districtAssets.forEach((asset, index) => drawAssetMarker(context, asset, district, width, height, index));
+  });
   drawUtilities(context, width, height, overlays);
 
   context.fillStyle = 'rgba(8, 15, 22, 0.65)';
-  fillRoundedRect(context, width * 0.03, height * 0.05, width * 0.24, height * 0.14, 22, context.fillStyle);
+  fillRoundedRect(context, width * 0.03, height * 0.05, width * 0.23, height * 0.12, 22, context.fillStyle);
   context.fillStyle = '#f1f8ff';
-  context.font = `700 ${Math.max(14, width * 0.021)}px "Trebuchet MS", sans-serif`;
-  context.fillText(`${state.cityName} Regional Plan`, width * 0.05, height * 0.105);
-  context.font = `500 ${Math.max(12, width * 0.014)}px "Trebuchet MS", sans-serif`;
+  context.font = `700 ${Math.max(14, width * 0.018)}px "Trebuchet MS", sans-serif`;
+  context.fillText(`${state.cityName} Grid`, width * 0.05, height * 0.102);
+  context.font = `500 ${Math.max(12, width * 0.013)}px "Trebuchet MS", sans-serif`;
   context.fillStyle = 'rgba(219, 238, 255, 0.82)';
-  context.fillText(`${stats.season} · Year ${state.year} · Turn ${state.turn}`, width * 0.05, height * 0.145);
-  context.fillText(`Population ${stats.population} · Treasury ${stats.treasury} · Unrest ${stats.unrest}%`, width * 0.05, height * 0.175);
+  context.fillText(`${stats.season} · Y${state.year} · T${state.turn}`, width * 0.05, height * 0.138);
 
   context.fillStyle = 'rgba(8, 15, 22, 0.58)';
-  fillRoundedRect(context, width * 0.03, height * 0.82, width * 0.24, height * 0.09, 18, context.fillStyle);
+  fillRoundedRect(context, width * 0.03, height * 0.84, width * 0.26, height * 0.08, 18, context.fillStyle);
   context.fillStyle = '#dbeeff';
   context.font = `600 ${Math.max(11, width * 0.013)}px "Trebuchet MS", sans-serif`;
-  context.fillText(state.sim.paused ? 'Simulation paused' : `Live at ${currentSpeedOption().label}`, width * 0.05, height * 0.865);
-  context.fillText(`Activity ${stats.activityLevel}%`, width * 0.18, height * 0.865);
+  context.fillText(state.sim.paused ? 'Paused' : `Live ${currentSpeedOption().label}`, width * 0.05, height * 0.875);
+  context.fillText(`ACT ${stats.activityLevel}%`, width * 0.19, height * 0.875);
   context.fillStyle = 'rgba(255, 255, 255, 0.12)';
-  fillRoundedRect(context, width * 0.05, height * 0.883, width * 0.18, height * 0.014, 999, context.fillStyle);
+  fillRoundedRect(context, width * 0.05, height * 0.89, width * 0.2, height * 0.014, 999, context.fillStyle);
   context.fillStyle = state.sim.paused ? '#ffd37f' : '#84dcff';
-  fillRoundedRect(context, width * 0.05, height * 0.883, width * 0.18 * state.sim.seasonProgress, height * 0.014, 999, context.fillStyle);
+  fillRoundedRect(context, width * 0.05, height * 0.89, width * 0.2 * state.sim.seasonProgress, height * 0.014, 999, context.fillStyle);
 
   for (let tower = 0; tower < skyline.towers; tower += 1) {
     const x = width * (0.28 + tower * 0.07);
@@ -717,172 +1454,311 @@ function paintCityMap() {
   drawMap(context, createCityViewModel(), width, height);
 }
 
-function demandMarkup(viewModel) {
-  return Object.entries(viewModel.demand).map(([key, value]) => `
-    <div class="demand-row">
-      <span>${key}</span>
-      <div class="demand-meter"><i style="width:${value * 10}%"></i></div>
-      <strong>${value}/10</strong>
-    </div>
-  `).join('');
-}
-
-function districtCardsMarkup(viewModel) {
-  return viewModel.districts.map((district) => `
-    <article class="district-card district-card-${district.type}">
-      <header>
-        <strong>${district.label}</strong>
-        <span>Intensity ${district.intensity}</span>
-      </header>
-      <p>${district.status}</p>
-    </article>
-  `).join('');
-}
-
 function speedControlsMarkup() {
   return SPEED_OPTIONS.map((option) => `
-    <button class="button speed-button ${option.value === state.sim.speed ? 'is-active' : ''}" type="button" data-speed="${option.value}" ${state.gameOver ? 'disabled' : ''}>${option.label}</button>
+    <button class="speed-chip ${option.value === state.sim.speed ? 'is-active' : ''}" type="button" data-speed="${option.value}" ${state.gameOver ? 'disabled' : ''}>${option.label}</button>
   `).join('');
+}
+
+function effectSummary(effects) {
+  const fragments = [];
+  if (effects.housing) fragments.push(`+${effects.housing} housing`);
+  if (effects.jobs) fragments.push(`+${effects.jobs} jobs`);
+  if (effects.powerSupply) fragments.push(`+${effects.powerSupply} power`);
+  if (effects.waterSupply) fragments.push(`+${effects.waterSupply} water`);
+  if (effects.serviceSupply) fragments.push(`+${effects.serviceSupply} services`);
+  if (effects.food) fragments.push(`+${effects.food} food`);
+  if (effects.production) fragments.push(`+${effects.production} production`);
+  if (effects.revenueBase) fragments.push(`+${effects.revenueBase} trade`);
+  if (effects.powerDemand) fragments.push(`+${effects.powerDemand} load`);
+  return fragments.slice(0, 3).join(' · ');
+}
+
+function selectionMatches(kind, key) {
+  return state.ui.selection.kind === kind && state.ui.selection.key === key;
+}
+
+function hoverMatches(kind, key) {
+  return state.ui.hoveredTarget?.kind === kind && state.ui.hoveredTarget?.key === key;
+}
+
+function assetActionKey(asset) {
+  if (!asset) return null;
+  if (['north-terraces', 'south-crossings'].includes(asset.key)) return 'housing';
+  if (asset.key === 'harbor-grid') return 'grid';
+  if (asset.key === 'industry-foundry') return 'industry';
+  if (asset.key === 'civic-hall') return 'services';
+  return null;
+}
+
+function actionLabel(key) {
+  return actions.find((action) => action.key === key)?.label ?? key;
+}
+
+function assetAnchor(district, index = 0) {
+  const anchors = [
+    { x: 0.78, y: 0.28 },
+    { x: 0.28, y: 0.72 },
+  ];
+  const anchor = anchors[index % anchors.length];
+  return {
+    x: district.x + district.w * anchor.x,
+    y: district.y + district.h * anchor.y,
+  };
+}
+
+function drawAssetMarker(context, asset, district, width, height, index) {
+  const anchor = assetAnchor(district, index);
+  const x = anchor.x * width;
+  const y = anchor.y * height;
+  const radius = Math.max(14, width * 0.015);
+  const selected = selectionMatches('asset', asset.key);
+  const hovered = hoverMatches('asset', asset.key);
+  const tone = assetActionKey(asset);
+  const fill =
+    tone === 'housing' ? 'rgba(152, 226, 166, 0.92)'
+    : tone === 'grid' ? 'rgba(117, 214, 255, 0.92)'
+    : tone === 'industry' ? 'rgba(255, 213, 138, 0.92)'
+    : 'rgba(234, 241, 255, 0.9)';
+
+  context.fillStyle = 'rgba(6, 12, 18, 0.82)';
+  context.beginPath();
+  context.arc(x, y, radius + 4, 0, Math.PI * 2);
+  context.fill();
+
+  context.fillStyle = fill;
+  context.beginPath();
+  context.arc(x, y, radius, 0, Math.PI * 2);
+  context.fill();
+
+  if (selected || hovered) {
+    context.strokeStyle = selected ? '#f4fbff' : 'rgba(255, 255, 255, 0.7)';
+    context.lineWidth = selected ? 3 : 2;
+    context.beginPath();
+    context.arc(x, y, radius + 7, 0, Math.PI * 2);
+    context.stroke();
+  }
+
+  context.fillStyle = '#02131b';
+  context.font = `700 ${Math.max(11, width * 0.011)}px "Trebuchet MS", sans-serif`;
+  context.textAlign = 'center';
+  context.fillText(`L${asset.level}`, x, y + 4);
+  context.textAlign = 'left';
+
+  interactiveTargets.push({
+    kind: 'asset',
+    key: asset.key,
+    x: x - radius - 8,
+    y: y - radius - 8,
+    w: (radius + 8) * 2,
+    h: (radius + 8) * 2,
+  });
+}
+
+function selectedEntity() {
+  if (state.ui.selection.kind === 'asset') {
+    const asset = getAssetByKey(state.ui.selection.key);
+    const district = asset ? getDistrictByKey(asset.districtKey) : null;
+    return { kind: 'asset', asset, district };
+  }
+
+  const district = getDistrictByKey(state.ui.selection.key);
+  return { kind: 'district', district, asset: null };
+}
+
+function inspectorMarkup() {
+  const systems = state.city.systems;
+  const selection = selectedEntity();
+
+  if (selection.kind === 'asset' && selection.asset && selection.district) {
+    const actionKey = assetActionKey(selection.asset);
+    const effects = resolveAssetEffects(selection.asset);
+    return `
+      <section class="floating-panel inspector" aria-label="Selection panel">
+        <div class="panel-head">
+          <span class="panel-kicker">City Asset</span>
+          <div class="panel-title-row">
+            <strong>${selection.asset.label}</strong>
+            <span class="status-pill">L${selection.asset.level}/${selection.asset.maxLevel}</span>
+          </div>
+          <p class="panel-status">${selection.district.label} relies on this node for ${effectSummary(effects) || 'local support'}.</p>
+        </div>
+        <div class="fact-grid">
+          <div class="fact-chip"><span>District</span><strong>${selection.district.label}</strong></div>
+          <div class="fact-chip"><span>Growth</span><strong>${selection.district.growthTrend > 0 ? '+' : ''}${selection.district.growthTrend.toFixed(1)}</strong></div>
+          <div class="fact-chip"><span>Unrest</span><strong>${Math.round(selection.district.localUnrest)}%</strong></div>
+          <div class="fact-chip"><span>Effect</span><strong>${effectSummary(effects) || 'Support'}</strong></div>
+        </div>
+        <div class="panel-actions">
+          <button class="action-chip is-primary" type="button" data-build="${actionKey}" ${!actionKey || state.actionsLeft <= 0 || state.gameOver || selection.asset.level >= selection.asset.maxLevel ? 'disabled' : ''}>
+            <strong>${selection.asset.level >= selection.asset.maxLevel ? 'Maxed' : `Upgrade via ${actionLabel(actionKey)}`}</strong>
+            <span>${selection.asset.level >= selection.asset.maxLevel ? 'Select another asset to keep building.' : `${selection.asset.label} upgrades directly from the map selection.`}</span>
+          </button>
+          <button class="action-chip" type="button" data-select-district="${selection.district.key}">
+            <strong>Inspect district</strong>
+            <span>Return to ${selection.district.label}.</span>
+          </button>
+        </div>
+        <div class="mini-grid">
+          <div class="mini-card"><span class="mini-label">Power</span><strong>${systems.utilities.power.coveragePercent}%</strong></div>
+          <div class="mini-card"><span class="mini-label">Water</span><strong>${systems.utilities.water.coveragePercent}%</strong></div>
+        </div>
+      </section>
+    `;
+  }
+
+  const district = selection.district ?? getDistrictByKey('civic');
+  const districtAssets = state.city.assets.filter((asset) => asset.districtKey === district.key);
+
+  return `
+    <section class="floating-panel inspector" aria-label="Selection panel">
+      <div class="panel-head">
+        <span class="panel-kicker">District</span>
+        <div class="panel-title-row">
+          <strong>${district.label}</strong>
+          <span class="status-pill">${district.status}</span>
+        </div>
+        <p class="panel-status">${Math.round(district.residents)} housed, ${Math.round(district.jobsFilled)} jobs filled, development ${Math.round(district.development * 100)}%.</p>
+      </div>
+      <div class="fact-grid">
+        <div class="fact-chip"><span>Growth</span><strong>${district.growthTrend > 0 ? '+' : ''}${district.growthTrend.toFixed(1)}</strong></div>
+        <div class="fact-chip"><span>Utility</span><strong>${Math.round(district.metrics.utilityLoad * 100)}%</strong></div>
+        <div class="fact-chip"><span>Services</span><strong>${Math.round(district.metrics.servicePressure * 100)}%</strong></div>
+        <div class="fact-chip"><span>Unrest</span><strong>${Math.round(district.localUnrest)}%</strong></div>
+      </div>
+      <div class="panel-actions">
+        ${actions.map((action) => `
+          <button class="action-chip ${selectedAssetForAction(action.key) ? 'is-primary' : ''}" type="button" data-build="${action.key}" ${state.actionsLeft <= 0 || state.gameOver ? 'disabled' : ''}>
+            <strong>${action.label}</strong>
+            <span>${action.note}</span>
+          </button>
+        `).join('')}
+      </div>
+      <div class="mini-grid">
+        ${districtAssets.map((asset) => `
+          <button class="mini-card mini-card-button" type="button" data-select-asset="${asset.key}">
+            <span class="mini-label">${asset.label}</span>
+            <strong>L${asset.level}/${asset.maxLevel}</strong>
+          </button>
+        `).join('')}
+      </div>
+    </section>
+  `;
 }
 
 function render() {
-  const { population, food, treasury, unrest } = state.resources;
+  const resources = state.city.resources;
+  const systems = state.city.systems;
   const viewModel = createCityViewModel();
-  const simState = state.gameOver ? 'Collapse' : state.sim.paused ? 'Paused' : 'Running';
-  const progressPercent = Math.round(state.sim.seasonProgress * 100);
+  const modeClass = state.gameOver ? 'status-danger' : state.sim.paused ? 'status-paused' : 'status-live';
+  const selected = selectedEntity();
+  const selectedLabel =
+    selected.kind === 'asset' && selected.asset ? selected.asset.label
+    : selected.district?.label ?? 'Civic Core';
 
   app.innerHTML = `
-    <main class="shell">
-      <section class="topbar panel">
-        <div class="topbar-title">
-          <p class="eyebrow">City Command Board</p>
-          <h1>${state.cityName}</h1>
-          <p class="topbar-copy">A visible city that keeps evolving on its own. Pause, change speed, and intervene while the districts react live.</p>
-        </div>
-        <div class="topbar-meta">
-          <div class="meta-pill">
-            <span>Simulation</span>
-            <strong>${simState} · ${currentSpeedOption().label}</strong>
-            <p>${state.gameOver ? 'The charter failed and the simulation halted.' : `${state.actionsLeft} civic actions left before ${nextSeason()}.`}</p>
-          </div>
-          <div class="meta-pill">
-            <span>Clock</span>
-            <strong>${currentSeason()} · Year ${state.year}</strong>
-            <p>${progressPercent}% through the current season, ${state.sim.tick} ticks processed.</p>
-          </div>
-          <div class="meta-actions">
-            <button class="button button-primary" type="button" data-action="toggle-pause" ${state.gameOver ? 'disabled' : ''}>${state.sim.paused ? 'Resume Simulation' : 'Pause Simulation'}</button>
-            <button class="button button-secondary" type="button" data-action="advance" ${state.gameOver ? 'disabled' : ''}>Rush To Next Season</button>
-            <button class="button button-secondary" type="button" data-action="reset">Restart Charter</button>
-          </div>
-          <div class="sim-controls" role="group" aria-label="Simulation speed">
-            <span class="sim-pill ${state.sim.paused ? 'is-paused' : 'is-live'}">${state.sim.paused ? 'Paused' : `Live ${currentSpeedOption().label}`}</span>
-            ${speedControlsMarkup()}
-          </div>
-        </div>
-      </section>
-
-      <section class="summary-grid" aria-label="City summary">
-        <article class="summary-card panel accent-cyan ${resourceTone('population', population)}">
-          <p>Population</p><strong>${population}</strong><span>Residents currently housed across active districts.</span>
-        </article>
-        <article class="summary-card panel accent-amber ${resourceTone('food', food)}">
-          <p>Food Reserve</p><strong>${food}</strong><span>Granaries rise and fall as each simulation tick lands.</span>
-        </article>
-        <article class="summary-card panel accent-green ${resourceTone('treasury', treasury)}">
-          <p>Treasury</p><strong>${treasury}</strong><span>Funds utilities, patrols, and the strain of continuous upkeep.</span>
-        </article>
-        <article class="summary-card panel accent-rose ${resourceTone('unrest', unrest)}">
-          <p>Civic Pulse</p><strong>${unrest}%</strong><span>Higher unrest darkens the city and starts pushing residents out.</span>
-        </article>
-      </section>
-
-      <section class="workspace">
-        <section class="map-panel panel" aria-labelledby="city-map-title">
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow">Regional View</p>
-              <h2 id="city-map-title">Graphical City Map</h2>
-            </div>
-            <div class="section-pills">
-              <span class="board-tag">${state.actionsLeft} actions left</span>
-              <span class="board-tag">Next: ${nextSeason()}</span>
-              <span class="board-tag">${progressPercent}% season progress</span>
-            </div>
-          </div>
+    <main class="app-shell">
+      <section class="game-shell">
+        <div class="city-stage">
           <div class="city-map-frame">
-            <canvas data-city-canvas aria-label="Canvas map showing roads, blocks, districts, utilities, and buildings for the simulated city"></canvas>
+            <canvas data-city-canvas aria-label="Interactive city canvas with districts and upgrade assets"></canvas>
           </div>
-          <div class="map-footer">
-            <div class="board-legend" aria-label="Map legend">
-              <span><i class="swatch swatch-road"></i> Road grid</span>
-              <span><i class="swatch swatch-civic"></i> Civic / mixed core</span>
-              <span><i class="swatch swatch-housing"></i> Housing</span>
-              <span><i class="swatch swatch-industry"></i> Industry</span>
-              <span><i class="swatch swatch-green"></i> Parks / farms</span>
-              <span><i class="swatch swatch-utility"></i> Utilities</span>
+          <div class="stage-overlay">
+            <div class="overlay-column">
+              <section class="floating-panel hud" aria-label="City HUD">
+                <div class="hud-title">
+                  <span class="hud-kicker">Minimal City Builder</span>
+                  <strong>${state.cityName}</strong>
+                  <div class="hud-subline">
+                    <span class="capsule ${modeClass}"><span class="chip-icon">${state.sim.paused ? '||' : '>>'}</span><strong>${state.gameOver ? 'Collapse' : state.sim.paused ? 'Paused' : `Live ${currentSpeedOption().label}`}</strong></span>
+                    <span class="capsule"><span class="chip-icon">Y</span><strong>${currentSeason()} · ${state.year}</strong></span>
+                    <span class="capsule"><span class="chip-icon">A</span><strong>${state.actionsLeft}/${ACTION_LIMIT}</strong></span>
+                  </div>
+                </div>
+                <div class="hud-stats">
+                  <span class="stat-chip"><span class="chip-icon">P</span><span class="chip-label">Pop</span><strong>${Math.round(resources.population)}</strong></span>
+                  <span class="stat-chip"><span class="chip-icon">$</span><span class="chip-label">Treasury</span><strong>${Math.round(resources.treasury)}</strong></span>
+                  <span class="stat-chip"><span class="chip-icon">S</span><span class="chip-label">Satisfaction</span><strong>${Math.round(systems.mood.satisfaction)}%</strong></span>
+                  <span class="stat-chip"><span class="chip-icon">U</span><span class="chip-label">Unrest</span><strong>${Math.round(resources.unrest)}%</strong></span>
+                </div>
+              </section>
+
+              <div class="stage-bottom">
+                <section class="floating-panel toolbar" aria-label="City controls">
+                  <div class="toolbar-row">
+                    <span class="toolbar-label">Build</span>
+                    <div class="toolbar-group">
+                      ${actions.map((action) => `
+                        <button class="toolbar-button is-build" type="button" data-build="${action.key}" ${state.actionsLeft <= 0 || state.gameOver ? 'disabled' : ''}>
+                          <strong>${action.label}</strong>
+                        </button>
+                      `).join('')}
+                    </div>
+                  </div>
+                  <div class="toolbar-row">
+                    <button class="toolbar-toggle ${state.sim.paused ? 'is-primary' : ''}" type="button" data-action="toggle-pause" ${state.gameOver ? 'disabled' : ''}>${state.sim.paused ? 'Resume' : 'Pause'}</button>
+                    <button class="toolbar-toggle" type="button" data-action="advance" ${state.gameOver ? 'disabled' : ''}>Next</button>
+                    <button class="toolbar-toggle" type="button" data-action="reset">Reset</button>
+                    <div class="speed-track">${speedControlsMarkup()}</div>
+                  </div>
+                </section>
+
+                <section class="floating-panel ticker" aria-label="System ticker">
+                  <div class="ticker-row">
+                    <span class="ticker-dot"></span>
+                    <strong>Selected</strong>
+                    <span>${selectedLabel}</span>
+                  </div>
+                  <div class="ticker-row">
+                    <span class="ticker-dot"></span>
+                    <span>Housing ${Math.round(systems.housing.capacity)} / ${Math.round(resources.population)} · Power ${systems.utilities.power.coveragePercent}% · Transit ${systems.utilities.transit.loadPercent}%</span>
+                  </div>
+                  <div class="ticker-row">
+                    <span class="ticker-dot"></span>
+                    <span>${state.log[0]}</span>
+                  </div>
+                </section>
+              </div>
             </div>
-            <div class="demand-panel">
-              <h3>Pressure Map</h3>
-              ${demandMarkup(viewModel)}
+
+            <div class="inspector-column">
+              ${inspectorMarkup()}
             </div>
           </div>
-        </section>
-
-        <aside class="sidebar panel" aria-labelledby="control-panel-title">
-          <div class="section-heading">
-            <div>
-              <p class="eyebrow">Operations</p>
-              <h2 id="control-panel-title">City Systems</h2>
-            </div>
-          </div>
-
-          <div class="control-stack">
-            <section class="control-group">
-              <h3>Season Actions</h3>
-              ${actions.map((action) => `
-                <button class="button control-button" type="button" data-build="${action.key}" ${state.actionsLeft <= 0 || state.gameOver ? 'disabled' : ''}>
-                  <strong>${action.label}</strong>
-                  <span>${action.note}</span>
-                </button>
-              `).join('')}
-            </section>
-
-            <section class="control-group district-stack">
-              <h3>District Readout</h3>
-              ${districtCardsMarkup(viewModel)}
-            </section>
-
-            <section class="control-group">
-              <h3>Simulation State</h3>
-              <div class="status-row"><span>Current season</span><strong>${currentSeason()}</strong></div>
-              <div class="status-row"><span>Next season</span><strong>${nextSeason()}</strong></div>
-              <div class="status-row"><span>Season progress</span><strong>${progressPercent}%</strong></div>
-              <div class="status-row"><span>Total ticks</span><strong>${state.sim.tick}</strong></div>
-              <div class="status-row"><span>Yearly trade bonus</span><strong>+${state.modifiers.markets}</strong></div>
-              <div class="status-row"><span>Watch strength</span><strong>${state.modifiers.guard}</strong></div>
-              <div class="status-row"><span>Farm network</span><strong>${state.modifiers.farms}</strong></div>
-            </section>
-
-            <section class="control-group">
-              <h3>Simulation Hooks</h3>
-              <div class="status-row"><span>UI bridge</span><strong>window.citySimUI</strong></div>
-              <div class="status-row"><span>State snapshot</span><strong>window.citySimState</strong></div>
-            </section>
-
-            <section class="control-group">
-              <h3>Founding Chronicle</h3>
-              <ul class="advisory-list log">
-                ${state.log.map((entry) => `<li>${entry}</li>`).join('')}
-              </ul>
-            </section>
-          </div>
-        </aside>
+        </div>
       </section>
     </main>
   `;
 
   paintCityMap();
+
+  const canvas = document.querySelector('[data-city-canvas]');
+  if (!canvas) return;
+
+  canvas.addEventListener('pointermove', (event) => {
+    const point = canvasPoint(event, canvas);
+    const hit = hitTestCanvas(point);
+    const next = hit ? { kind: hit.kind, key: hit.key } : null;
+    if ((next?.kind ?? null) === (state.ui.hoveredTarget?.kind ?? null) && (next?.key ?? null) === (state.ui.hoveredTarget?.key ?? null)) {
+      return;
+    }
+    state.ui.hoveredTarget = next;
+    paintCityMap();
+  });
+
+  canvas.addEventListener('pointerleave', () => {
+    if (!state.ui.hoveredTarget) return;
+    state.ui.hoveredTarget = null;
+    paintCityMap();
+  });
+
+  canvas.addEventListener('click', (event) => {
+    const point = canvasPoint(event, canvas);
+    const hit = hitTestCanvas(point);
+    if (!hit) return;
+    if (hit.kind === 'asset') selectAsset(hit.key);
+    if (hit.kind === 'district') selectDistrict(hit.key);
+  });
 }
 
 function simulationFrame(timestamp) {
@@ -906,6 +1782,23 @@ function simulationFrame(timestamp) {
   frameHandle = window.requestAnimationFrame(simulationFrame);
 }
 
+function canvasPoint(event, canvas) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: event.clientX - rect.left,
+    y: event.clientY - rect.top,
+  };
+}
+
+function hitTestCanvas(point) {
+  return [...interactiveTargets].reverse().find((target) => (
+    point.x >= target.x
+    && point.x <= target.x + target.w
+    && point.y >= target.y
+    && point.y <= target.y + target.h
+  )) ?? null;
+}
+
 window.addEventListener('resize', () => {
   if (resizeQueued) return;
   resizeQueued = true;
@@ -916,18 +1809,21 @@ window.addEventListener('resize', () => {
 });
 
 app.addEventListener('click', (event) => {
-  const target = event.target.closest('button');
-  if (!target) return;
-
-  const { action, build, speed } = target.dataset;
-  if (action === 'advance') rushSeason();
-  if (action === 'toggle-pause') togglePause();
-  if (action === 'reset') {
-    state = createInitialState();
-    render();
+  const button = event.target.closest('button');
+  if (button) {
+    const { action, build, speed, selectDistrict: districtKey, selectAsset: assetKey } = button.dataset;
+    if (action === 'advance') rushSeason();
+    if (action === 'toggle-pause') togglePause();
+    if (action === 'reset') {
+      state = createInitialState();
+      normalizeState();
+      render();
+    }
+    if (build) applyAction(build);
+    if (speed) setSpeed(Number(speed));
+    if (districtKey) selectDistrict(districtKey);
+    if (assetKey) selectAsset(assetKey);
   }
-  if (build) applyAction(build);
-  if (speed) setSpeed(Number(speed));
 });
 
 window.citySimState = {
@@ -953,8 +1849,11 @@ window.citySimUI = {
     togglePause(false);
   },
   setSpeed,
+  selectDistrict,
+  selectAsset,
 };
 
 normalizeState();
+syncAlerts();
 render();
 frameHandle = window.requestAnimationFrame(simulationFrame);
